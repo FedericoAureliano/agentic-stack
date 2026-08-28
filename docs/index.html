@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Programming the Agentic Stack</title>
+<meta name="author" content="Federico Mora">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="main.css">
+</head>
+<body>
+<main>
+<div class="header-row">
+<h1>Programming the Agentic Stack</h1>
+<p class="meta"><a href="https://federico.morarocha.ca">Federico Mora</a></p>
+</div>
+<section class="fold"><h2><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;</span>User Interface (Agentic SDK)</h2>
+<div class="codehilite"><pre><span></span><code><span class="nd">@tool</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">fib</span><span class="p">(</span><span class="n">n</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Return the nth Fibonacci number"""</span>
+    <span class="k">if</span> <span class="n">n</span> <span class="o">&lt;=</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">n</span>
+    <span class="k">return</span> <span class="n">fib</span><span class="p">(</span><span class="n">n</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span> <span class="o">+</span> <span class="n">fib</span><span class="p">(</span><span class="n">n</span> <span class="o">-</span> <span class="mi">2</span><span class="p">)</span>
+
+<span class="n">fib_agent</span> <span class="o">=</span> <span class="n">Agent</span><span class="p">(</span><span class="n">tools</span><span class="o">=</span><span class="p">[</span><span class="n">fib</span><span class="p">])</span>
+
+<span class="n">answer</span> <span class="o">=</span> <span class="n">fib_agent</span><span class="p">(</span><span class="s2">"What is the thirty-third Fibonacci number?"</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">answer</span><span class="p">)</span> <span class="c1"># The thirty-third Fibonacci number is 3524578</span>
+</code></pre></div>
+</section><section class="fold"><h2><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;</span>The Mechanics (Inference Engine)</h2>
+<section class="fold"><h3><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;</span>Chat Template</h3>
+<div class="codehilite"><pre><span></span><code><span class="cp">{%</span>- <span class="k">if</span> <span class="nv">tools</span> <span class="cp">%}</span>
+<span class="x">  </span><span class="cp">{{</span><span class="o">-</span> <span class="s1">'&lt;|im_start|&gt;system\n'</span> <span class="cp">}}</span>
+<span class="x">  </span><span class="cp">{%</span>- <span class="k">if</span> <span class="nv">messages</span><span class="o">[</span><span class="m">0</span><span class="o">]</span><span class="nv">.role</span> <span class="o">==</span> <span class="s1">'system'</span> <span class="cp">%}</span>
+<span class="x">    </span><span class="cp">{{</span><span class="o">-</span> <span class="nv">messages</span><span class="o">[</span><span class="m">0</span><span class="o">]</span><span class="nv">.content</span> <span class="o">+</span> <span class="s1">'\n\n'</span> <span class="cp">}}</span>
+<span class="x">  </span><span class="cp">{%</span>- <span class="k">endif</span> <span class="cp">%}</span>
+<span class="x">  </span><span class="cp">{{</span><span class="o">-</span> <span class="s2">"# Tools\n\nYou may call one or more functions to assist with the user query.\n\nYou are provided with function signatures within &lt;tools&gt;&lt;/tools&gt; XML tags:\n&lt;tools&gt;"</span> <span class="cp">}}</span>
+<span class="x">  </span><span class="cp">{%</span>- <span class="k">for</span> <span class="nv">tool</span> <span class="k">in</span> <span class="nv">tools</span> <span class="cp">%}</span>
+<span class="x">    </span><span class="cp">{{</span><span class="o">-</span> <span class="s2">"\n"</span> <span class="cp">}}{{</span><span class="o">-</span> <span class="nv">tool</span> <span class="o">|</span> <span class="nf">tojson</span> <span class="cp">}}</span>
+<span class="x">  </span><span class="cp">{%</span>- <span class="k">endfor</span> <span class="cp">%}</span>
+<span class="x">  </span><span class="cp">{{</span><span class="o">-</span> <span class="s2">"\n&lt;/tools&gt;\n\nFor each function call, return a json object..."</span> <span class="cp">}}</span>
+<span class="cp">{%</span>- <span class="k">endif</span> <span class="cp">%}</span>
+</code></pre></div>
+<pre class="codehilite qwen3-tokens"><code><span class="tk tk-im">&lt;|im_start|&gt;</span><span class="tk">system</span><span class="tk">
+</span><span class="tk">#</span><span class="tk"> Tools</span><span class="tk">
+
+</span><span class="tk">You</span><span class="tk"> may</span><span class="tk"> call</span><span class="tk"> one</span><span class="tk"> or</span><span class="tk"> more</span><span class="tk"> functions</span><span class="tk"> to</span><span class="tk"> assist</span><span class="tk"> with</span><span class="tk"> the</span><span class="tk"> user</span><span class="tk"> query</span><span class="tk">.
+
+</span><span class="tk">You</span><span class="tk"> are</span><span class="tk"> provided</span><span class="tk"> with</span><span class="tk"> function</span><span class="tk"> signatures</span><span class="tk"> within</span><span class="tk"> &lt;</span><span class="tk">tools</span><span class="tk">&gt;&lt;/</span><span class="tk">tools</span><span class="tk">&gt;</span><span class="tk"> XML</span><span class="tk"> tags</span><span class="tk">:
+</span><span class="tk">&lt;</span><span class="tk">tools</span><span class="tk">&gt;
+</span><span class="tk">{
+</span><span class="tk"> </span><span class="tk"> "</span><span class="tk">type</span><span class="tk">"</span><span class="tk">   </span><span class="tk"> :</span><span class="tk"> "</span><span class="tk">function</span><span class="tk">",</span><span class="tk"> 
+</span><span class="tk"> </span><span class="tk"> "</span><span class="tk">function</span><span class="tk">":</span><span class="tk"> {
+</span><span class="tk">   </span><span class="tk"> "</span><span class="tk">name</span><span class="tk">"</span><span class="tk">      </span><span class="tk"> :</span><span class="tk"> "</span><span class="tk">fib</span><span class="tk">",</span><span class="tk"> 
+</span><span class="tk">   </span><span class="tk"> "</span><span class="tk">description</span><span class="tk">":</span><span class="tk"> "</span><span class="tk">Return</span><span class="tk"> the</span><span class="tk"> nth</span><span class="tk"> Fibonacci</span><span class="tk"> number</span><span class="tk">",</span><span class="tk"> 
+</span><span class="tk">   </span><span class="tk"> "</span><span class="tk">parameters</span><span class="tk">"</span><span class="tk"> :</span><span class="tk"> {
+</span><span class="tk">     </span><span class="tk"> "</span><span class="tk">type</span><span class="tk">"</span><span class="tk">     </span><span class="tk"> :</span><span class="tk"> "</span><span class="tk">object</span><span class="tk">",
+</span><span class="tk">     </span><span class="tk"> "</span><span class="tk">properties</span><span class="tk">":</span><span class="tk"> {"</span><span class="tk">n</span><span class="tk">":</span><span class="tk"> {"</span><span class="tk">type</span><span class="tk">":</span><span class="tk"> "</span><span class="tk">integer</span><span class="tk">"}</span><span class="tk">},</span><span class="tk"> 
+</span><span class="tk">     </span><span class="tk"> "</span><span class="tk">required</span><span class="tk">"</span><span class="tk"> </span><span class="tk"> :</span><span class="tk"> ["</span><span class="tk">n</span><span class="tk">"]
+</span><span class="tk">   </span><span class="tk"> }
+</span><span class="tk"> </span><span class="tk"> }
+</span><span class="tk">}
+</span><span class="tk">&lt;/</span><span class="tk">tools</span><span class="tk">&gt;
+
+</span><span class="tk">For</span><span class="tk"> each</span><span class="tk"> function</span><span class="tk"> call</span><span class="tk">,</span><span class="tk"> return</span><span class="tk"> a</span><span class="tk"> json</span><span class="tk"> object</span><span class="tk"> with</span><span class="tk"> function</span><span class="tk"> name</span><span class="tk"> and</span><span class="tk"> arguments</span><span class="tk"> within</span><span class="tk"> </span><span class="tk tk-tool">&lt;tool_call&gt;</span><span class="tk tk-tool">&lt;/tool_call&gt;</span><span class="tk"> XML</span><span class="tk"> tags</span><span class="tk">:
+</span><span class="tk tk-tool">&lt;tool_call&gt;</span><span class="tk">
+</span><span class="tk">{"</span><span class="tk">name</span><span class="tk">":</span><span class="tk"> &lt;</span><span class="tk">function</span><span class="tk">-name</span><span class="tk">&gt;,</span><span class="tk"> "</span><span class="tk">arguments</span><span class="tk">":</span><span class="tk"> &lt;</span><span class="tk">args</span><span class="tk">-json</span><span class="tk">-object</span><span class="tk">&gt;}
+</span><span class="tk tk-tool">&lt;/tool_call&gt;</span><span class="tk">
+</span><span class="tk tk-im">&lt;|im_end|&gt;</span></code></pre>
+<pre class="codehilite qwen3-tokens"><code><span class="tk tk-im">&lt;|im_start|&gt;</span><span class="tk">user</span><span class="tk">
+</span><span class="tk">What</span><span class="tk"> is</span><span class="tk"> the</span><span class="tk"> thirty</span><span class="tk">-third</span><span class="tk"> Fibonacci</span><span class="tk"> number</span><span class="tk">?
+</span><span class="tk tk-im">&lt;|im_end|&gt;</span></code></pre>
+</section><section class="fold"><h3><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;</span>Tokenizer</h3>
+<p>Dictionary plus rules (order matters)</p>
+</section><section class="fold"><h3><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;</span>Token Generation</h3>
+<pre class="codehilite qwen3-tokens"><code><span class="tk tk-im">&lt;|im_start|&gt;</span><span class="tk">assistant</span><span class="tk">
+</span><span class="tk tk-think">&lt;think&gt;</span><span class="tk">
+</span><span class="tk">The</span><span class="tk"> user</span><span class="tk"> wants</span><span class="tk"> the</span><span class="tk"> </span><span class="tk">3</span><span class="tk">3</span><span class="tk">rd</span><span class="tk"> Fibonacci</span><span class="tk"> number</span><span class="tk">.</span><span class="tk"> Rather</span><span class="tk"> than</span><span class="tk"> compute</span><span class="tk"> it</span><span class="tk"> by</span><span class="tk"> hand</span><span class="tk">,</span><span class="tk"> I</span><span class="tk">'ll</span><span class="tk"> call</span><span class="tk"> the</span><span class="tk"> fib</span><span class="tk"> function</span><span class="tk"> with</span><span class="tk"> n</span><span class="tk">=</span><span class="tk">3</span><span class="tk">3</span><span class="tk">.
+</span><span class="tk tk-think">&lt;/think&gt;</span><span class="tk">
+</span><span class="tk tk-tool">&lt;tool_call&gt;</span><span class="tk">
+</span><span class="tk">{"</span><span class="tk">name</span><span class="tk">":</span><span class="tk"> "</span><span class="tk">fib</span><span class="tk">",</span><span class="tk"> "</span><span class="tk">arguments</span><span class="tk">":</span><span class="tk"> {"</span><span class="tk">n</span><span class="tk">":</span><span class="tk"> </span><span class="tk">3</span><span class="tk">3</span><span class="tk">}}
+</span><span class="tk tk-tool">&lt;/tool_call&gt;</span><span class="tk">
+</span><span class="tk tk-im">&lt;|im_end|&gt;</span></code></pre>
+</section><section class="fold"><h3><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;</span>Reasoning and Tool-calls (Parse and Respond)</h3>
+<div class="codehilite"><pre><span></span><code><span class="c1"># detokenize (order doesn't matter in this direction)</span>
+<span class="c1"># get the json in &lt;tool_call&gt;...&lt;/tool_call&gt;</span>
+<span class="c1"># call the corresponding function</span>
+<span class="c1"># send back the response</span>
+</code></pre></div>
+<p>For Qwen, "tool results are treated as special user messages." Models like GLM use an actual <code>&lt;|observation|&gt;</code> role for this instead.</p>
+<pre class="codehilite qwen3-tokens"><code><span class="tk tk-im">&lt;|im_start|&gt;</span><span class="tk">user</span><span class="tk">
+</span><span class="tk tk-tool">&lt;tool_response&gt;</span><span class="tk">
+</span><span class="tk">3</span><span class="tk">5</span><span class="tk">2</span><span class="tk">4</span><span class="tk">5</span><span class="tk">7</span><span class="tk">8</span><span class="tk">
+</span><span class="tk tk-tool">&lt;/tool_response&gt;</span><span class="tk">
+</span><span class="tk tk-im">&lt;|im_end|&gt;</span></code></pre>
+</section><section class="fold"><h3><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;</span>Final Response</h3>
+<pre class="codehilite qwen3-tokens"><code><span class="tk tk-im">&lt;|im_start|&gt;</span><span class="tk">assistant</span><span class="tk">
+</span><span class="tk tk-think">&lt;think&gt;</span><span class="tk">
+</span><span class="tk">The</span><span class="tk"> fib</span><span class="tk"> function</span><span class="tk"> returned</span><span class="tk"> </span><span class="tk">3</span><span class="tk">5</span><span class="tk">2</span><span class="tk">4</span><span class="tk">5</span><span class="tk">7</span><span class="tk">8</span><span class="tk">.</span><span class="tk"> That</span><span class="tk">'s</span><span class="tk"> the</span><span class="tk"> answer</span><span class="tk"> to</span><span class="tk"> give</span><span class="tk"> the</span><span class="tk"> user</span><span class="tk">.
+</span><span class="tk tk-think">&lt;/think&gt;</span><span class="tk">
+</span><span class="tk">The</span><span class="tk"> thirty</span><span class="tk">-third</span><span class="tk"> Fibonacci</span><span class="tk"> number</span><span class="tk"> is</span><span class="tk"> </span><span class="tk">3</span><span class="tk">5</span><span class="tk">2</span><span class="tk">4</span><span class="tk">5</span><span class="tk">7</span><span class="tk">8</span><span class="tk">
+</span><span class="tk tk-im">&lt;|im_end|&gt;</span></code></pre>
+</section></section><section class="fold"><h2><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;</span>Concerns and Interventions</h2>
+<section class="fold"><h3><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;</span>Token Cost and Context Size</h3>
+<section class="fold"><h4><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;&gt;</span>Solution 1: Prompting</h4>
+</section><section class="fold"><h4><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;&gt;</span>Solution 2: Design</h4>
+</section><section class="fold"><h4><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;&gt;</span>Solution 3: Monitors (Hooks)</h4>
+</section></section><section class="fold"><h3><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;</span>Tool Interface</h3>
+<section class="fold"><h4><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;&gt;</span>Solution 1: Prompting</h4>
+</section><section class="fold"><h4><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;&gt;</span>Solution 2: Grammar Constraind Decoding</h4>
+<section class="fold"><h5><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;&gt;&gt;</span>Do Tokens and Non-Terminals Align?</h5>
+</section></section></section><section class="fold"><h3><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;</span>Multiple Tool Calls</h3>
+<p>Imagine that we ask for two <code>fib</code> tool calls, we execute them in parallel, and the results come back out of order. Will we give the user the right response? </p>
+<section class="fold"><h4><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;&gt;</span>Solution 1: Tool Call IDs</h4>
+<p>Qwen doesn't support tool call IDs, but other models do.</p>
+</section><section class="fold"><h4><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;&gt;</span>Solution 2: Pure Functions</h4>
+</section></section><section class="fold"><h3><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;</span>End-to-End Correctness</h3></section></section>
+</main>
+<script>
+document.querySelectorAll('.fold-arrow').forEach(function (arrow) {
+  function toggle() {
+    var section = arrow.closest('.fold');
+    var collapsed = section.classList.toggle('collapsed');
+    arrow.setAttribute('aria-expanded', String(!collapsed));
+  }
+  arrow.addEventListener('click', toggle);
+  arrow.addEventListener('keydown', function (event) {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      toggle();
+    }
+  });
+});
+</script>
+</body>
+</html>
