@@ -16,7 +16,18 @@
 <h1>Programming the Agentic Stack</h1>
 <p class="meta"><a href="https://federico.morarocha.ca">Federico Mora</a></p>
 </div>
+<p>What does it mean to program an agent? What is really happening under-the-hood?
+What can go wrong and what can we do about it?</p>
+<p>This fall, I am teaching <a href="https://federico.morarocha.ca/CS846-FMxAI/">CS 846:
+FMxAI</a> at the University of
+Waterloo. This blog post is an informal companion to the first three modules of
+the course.</p>
 <section class="fold"><h2><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;</span>User Interface (Agentic SDK)</h2>
+<p>Agentic SDKs let you define agents in just a few lines of code. For example,
+the code below defines a simple agent called <code>fib_agent</code> that has access to one
+tool, <code>fib</code>, which takes in an integer <code>n</code> and returns the <code>n</code>-th number in the
+Fibonacci sequence. This is a silly example, but we will see that it is
+surprisingly illustrative.</p>
 <div class="codehilite"><pre><span></span><code><span class="nd">@tool</span>
 <span class="k">def</span><span class="w"> </span><span class="nf">fib</span><span class="p">(</span><span class="n">n</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Return the nth Fibonacci number"""</span>
@@ -25,12 +36,31 @@
     <span class="k">return</span> <span class="n">fib</span><span class="p">(</span><span class="n">n</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span> <span class="o">+</span> <span class="n">fib</span><span class="p">(</span><span class="n">n</span> <span class="o">-</span> <span class="mi">2</span><span class="p">)</span>
 
 <span class="n">fib_agent</span> <span class="o">=</span> <span class="n">Agent</span><span class="p">(</span><span class="n">tools</span><span class="o">=</span><span class="p">[</span><span class="n">fib</span><span class="p">])</span>
-
-<span class="n">answer</span> <span class="o">=</span> <span class="n">fib_agent</span><span class="p">(</span><span class="s2">"What is the thirty-third Fibonacci number?"</span><span class="p">)</span>
-<span class="nb">print</span><span class="p">(</span><span class="n">answer</span><span class="p">)</span> <span class="c1"># The thirty-third Fibonacci number is 3524578</span>
+</code></pre></div>
+<p>Once we have the agent, we can give it tasks. For example, we can ask it for
+the 33rd Fibonacci number—and it gets the answer right!</p>
+<div class="codehilite"><pre><span></span><code><span class="gp">&gt;&gt;&gt; </span><span class="n">answer</span> <span class="o">=</span> <span class="n">fib_agent</span><span class="p">(</span><span class="s2">"What is the thirty-third Fibonacci number?"</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="n">answer</span><span class="p">)</span>
+<span class="go">The thirty-third Fibonacci number is 3524578</span>
 </code></pre></div>
 </section><section class="fold"><h2><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;</span>The Mechanics (Inference Engine)</h2>
-<section class="fold"><h3><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;</span>Chat Template</h3>
+<p>But what in the world just happened? Did the agent use the tool? If so, how?
+How did it know that the tool exists? How did it call it? How did it get the
+result? What do language models have to do with any of this? What is happening?</p>
+<p>Roughly, under-the-hood, we are </p>
+<ol>
+<li>converting our agentic program into a prompt following a <em>template</em>;</li>
+<li>converting that prompt into <em>tokens</em>;</li>
+<li>using a probability distribution to <em>generate</em> more tokens; </li>
+<li><em>recognizing</em> tool calls in the tokens;</li>
+<li><em>calling</em> those tools;</li>
+<li><em>returning</em> the result of the tool call as more tokens; and</li>
+<li>repeating from step 3 until we generate a special <em>end</em> token.</li>
+</ol>
+<p>Many of these steps are language model specific. To make things as concrete as
+possible, we will walk through the toy example using Qwen3 syntax and
+standards.</p>
+<section class="fold"><h3><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;</span>1. Template</h3>
 <div class="codehilite"><pre><span></span><code><span class="cp">{%</span>- <span class="k">if</span> <span class="nv">tools</span> <span class="cp">%}</span>
 <span class="x">  </span><span class="cp">{{</span><span class="o">-</span> <span class="s1">'&lt;|im_start|&gt;system\n'</span> <span class="cp">}}</span>
 <span class="x">  </span><span class="cp">{%</span>- <span class="k">if</span> <span class="nv">messages</span><span class="o">[</span><span class="m">0</span><span class="o">]</span><span class="nv">.role</span> <span class="o">==</span> <span class="s1">'system'</span> <span class="cp">%}</span>
@@ -72,9 +102,9 @@
 <pre class="codehilite qwen3-tokens"><code><span class="tk tk-im">&lt;|im_start|&gt;</span><span class="tk">user</span><span class="tk">
 </span><span class="tk">What</span><span class="tk"> is</span><span class="tk"> the</span><span class="tk"> thirty</span><span class="tk">-third</span><span class="tk"> Fibonacci</span><span class="tk"> number</span><span class="tk">?
 </span><span class="tk tk-im">&lt;|im_end|&gt;</span></code></pre>
-</section><section class="fold"><h3><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;</span>Tokenizer</h3>
+</section><section class="fold"><h3><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;</span>2. Tokens</h3>
 <p>Dictionary plus rules (order matters)</p>
-</section><section class="fold"><h3><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;</span>Token Generation</h3>
+</section><section class="fold"><h3><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;</span>3. Generate</h3>
 <pre class="codehilite qwen3-tokens"><code><span class="tk tk-im">&lt;|im_start|&gt;</span><span class="tk">assistant</span><span class="tk">
 </span><span class="tk tk-think">&lt;think&gt;</span><span class="tk">
 </span><span class="tk">The</span><span class="tk"> user</span><span class="tk"> wants</span><span class="tk"> the</span><span class="tk"> </span><span class="tk">3</span><span class="tk">3</span><span class="tk">rd</span><span class="tk"> Fibonacci</span><span class="tk"> number</span><span class="tk">.</span><span class="tk"> Rather</span><span class="tk"> than</span><span class="tk"> compute</span><span class="tk"> it</span><span class="tk"> by</span><span class="tk"> hand</span><span class="tk">,</span><span class="tk"> I</span><span class="tk">'ll</span><span class="tk"> call</span><span class="tk"> the</span><span class="tk"> fib</span><span class="tk"> function</span><span class="tk"> with</span><span class="tk"> n</span><span class="tk">=</span><span class="tk">3</span><span class="tk">3</span><span class="tk">.
@@ -83,19 +113,26 @@
 </span><span class="tk">{"</span><span class="tk">name</span><span class="tk">":</span><span class="tk"> "</span><span class="tk">fib</span><span class="tk">",</span><span class="tk"> "</span><span class="tk">arguments</span><span class="tk">":</span><span class="tk"> {"</span><span class="tk">n</span><span class="tk">":</span><span class="tk"> </span><span class="tk">3</span><span class="tk">3</span><span class="tk">}}
 </span><span class="tk tk-tool">&lt;/tool_call&gt;</span><span class="tk">
 </span><span class="tk tk-im">&lt;|im_end|&gt;</span></code></pre>
-</section><section class="fold"><h3><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;</span>Reasoning and Tool-calls (Parse and Respond)</h3>
+</section><section class="fold"><h3><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;</span>4. Recognize</h3>
 <div class="codehilite"><pre><span></span><code><span class="c1"># detokenize (order doesn't matter in this direction)</span>
-<span class="c1"># get the json in &lt;tool_call&gt;...&lt;/tool_call&gt;</span>
-<span class="c1"># call the corresponding function</span>
-<span class="c1"># send back the response</span>
+<span class="c1"># parse the json in &lt;tool_call&gt;...&lt;/tool_call&gt;</span>
 </code></pre></div>
+<p>If the language model uses slightly different format, you can run into trouble.
+For example, today, Claude gave me output like this <code>(cite
+index="9-1"&gt;...&lt;/cite&gt;</code> which probably should have rendered as a clickable
+citation. I suspect the parser was expecting an opening angle bracket, <code>&lt;</code>,
+instead of an opening round bracket, <code>(</code>, before the word <code>cite</code>. Since the
+harness did not recognize the citation, the text flowed through to me, the
+user, directly.</p>
+</section><section class="fold"><h3><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;</span>5. Call</h3>
+</section><section class="fold"><h3><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;</span>6. Return</h3>
 <p>For Qwen, "tool results are treated as special user messages." Models like GLM use an actual <code>&lt;|observation|&gt;</code> role for this instead.</p>
 <pre class="codehilite qwen3-tokens"><code><span class="tk tk-im">&lt;|im_start|&gt;</span><span class="tk">user</span><span class="tk">
 </span><span class="tk tk-tool">&lt;tool_response&gt;</span><span class="tk">
 </span><span class="tk">3</span><span class="tk">5</span><span class="tk">2</span><span class="tk">4</span><span class="tk">5</span><span class="tk">7</span><span class="tk">8</span><span class="tk">
 </span><span class="tk tk-tool">&lt;/tool_response&gt;</span><span class="tk">
 </span><span class="tk tk-im">&lt;|im_end|&gt;</span></code></pre>
-</section><section class="fold"><h3><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;</span>Final Response</h3>
+</section><section class="fold"><h3><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;</span>7. End</h3>
 <pre class="codehilite qwen3-tokens"><code><span class="tk tk-im">&lt;|im_start|&gt;</span><span class="tk">assistant</span><span class="tk">
 </span><span class="tk tk-think">&lt;think&gt;</span><span class="tk">
 </span><span class="tk">The</span><span class="tk"> fib</span><span class="tk"> function</span><span class="tk"> returned</span><span class="tk"> </span><span class="tk">3</span><span class="tk">5</span><span class="tk">2</span><span class="tk">4</span><span class="tk">5</span><span class="tk">7</span><span class="tk">8</span><span class="tk">.</span><span class="tk"> That</span><span class="tk">'s</span><span class="tk"> the</span><span class="tk"> answer</span><span class="tk"> to</span><span class="tk"> give</span><span class="tk"> the</span><span class="tk"> user</span><span class="tk">.
@@ -103,11 +140,21 @@
 </span><span class="tk">The</span><span class="tk"> thirty</span><span class="tk">-third</span><span class="tk"> Fibonacci</span><span class="tk"> number</span><span class="tk"> is</span><span class="tk"> </span><span class="tk">3</span><span class="tk">5</span><span class="tk">2</span><span class="tk">4</span><span class="tk">5</span><span class="tk">7</span><span class="tk">8</span><span class="tk">
 </span><span class="tk tk-im">&lt;|im_end|&gt;</span></code></pre>
 </section></section><section class="fold"><h2><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;</span>Concerns and Interventions</h2>
-<section class="fold"><h3><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;</span>Token Cost and Context Size</h3>
+<section class="fold"><h3><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;</span>Token Cost and Context Window Size</h3>
+<p>Claude Fable 5 tokens cost $10 / MTok for inputs and $50 / MTok for outputs.
+Each digit is one token so if I ask this agent for the 10,367,321st Fibonacci
+number, for example, the answer, which has 2,166,642 digits, would cost me
+$130, if it could fit in the context window. Claude Fable 5 has a 1M token
+context window, so this wouldn't work anyway.</p>
+<p>Fibonacci is a silly example, but there are plenty of realistic tools that have
+the same issue. An agent that reads from a database might bite off more than it
+can chew (or that you can afford for it to chew). An agent that uses an
+automated theorem prover might not be able to digest the proof it gets back.</p>
 <section class="fold"><h4><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;&gt;</span>Solution 1: Prompting</h4>
+<p>We could ask the LLM politely to not call <code>fib</code> with too large of an argument.</p>
 </section><section class="fold"><h4><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;&gt;</span>Solution 2: Design</h4>
 </section><section class="fold"><h4><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;&gt;</span>Solution 3: Monitors (Hooks)</h4>
-</section></section><section class="fold"><h3><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;</span>Tool Interface</h3>
+</section></section><section class="fold"><h3><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;</span>Tool Interface Errors</h3>
 <section class="fold"><h4><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;&gt;</span>Solution 1: Prompting</h4>
 </section><section class="fold"><h4><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;&gt;</span>Solution 2: Grammar Constraind Decoding</h4>
 <section class="fold"><h5><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;&gt;&gt;</span>Do Tokens and Non-Terminals Align?</h5>

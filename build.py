@@ -306,6 +306,10 @@ h5 { font-size: 15px; margin: 1rem 0 0.25rem; }
 }
 
 p, ul, ol { margin: 1rem 0; }
+/* Adjacent margins collapse to the larger value, so both sides of the
+   paragraph/list junction need shrinking, not just the list's top margin. */
+p + ul, p + ol { margin-top: 0.35rem; }
+p:has(+ ul), p:has(+ ol) { margin-bottom: 0.35rem; }
 
 a {
   color: var(--fg);
@@ -433,8 +437,17 @@ def main() -> None:
 
     body_html = markdown.markdown(
         body,
-        extensions=["fenced_code", "codehilite", "tables", "sane_lists"],
-        extension_configs={"codehilite": {"guess_lang": False}},
+        extensions=["fenced_code", "codehilite", "tables", "sane_lists", "smarty"],
+        extension_configs={
+            "codehilite": {"guess_lang": False},
+            # Only convert dashes ("---" -> em dash, "--" -> en dash); leave
+            # quotes and ellipses as plain ASCII.
+            "smarty": {
+                "smart_quotes": False,
+                "smart_angled_quotes": False,
+                "smart_ellipses": False,
+            },
+        },
     )
 
     if qwen3_blocks:
