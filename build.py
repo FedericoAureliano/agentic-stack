@@ -133,6 +133,27 @@ def extract_math_blocks(md_text: str) -> tuple[str, list[tuple[str, bool]]]:
     return "".join(out), blocks
 
 
+def wrap_bug_banners(body_html: str) -> str:
+    """Each <!-- ADD BUG BANNER HERE --> marker in index.md turns into a
+    standalone `<div class="bug-banner">` (see the emoji span inline in the
+    markdown source) sitting right before the paragraph it flags. Merge the
+    two into one `<div class="bug-row">` so the emoji can sit to the left of
+    that paragraph and be vertically centered against it with flexbox (see
+    .bug-row in main.css) instead of needing manual position math.
+    """
+    soup = BeautifulSoup(body_html, "html.parser")
+    for banner in soup.find_all("div", class_="bug-banner"):
+        emoji = banner.find("span", class_="bug-emoji")
+        para = banner.find_next_sibling(True)
+        if emoji is None or para is None:
+            continue
+        row = soup.new_tag("div", attrs={"class": "bug-row"})
+        banner.replace_with(row)
+        row.append(emoji.extract())
+        row.append(para.extract())
+    return str(soup)
+
+
 HEADING_TAGS = {"h2", "h3", "h4", "h5", "h6"}
 
 
@@ -342,6 +363,40 @@ main {
   max-width: 40rem;
   margin: 0 auto;
   padding: 3rem 1.25rem 4rem;
+}
+
+/* A small "known rough edge" marker. build.py's wrap_bug_banners() merges
+   each <!-- ADD BUG BANNER HERE --> placeholder with the paragraph right
+   after it into one row, so the emoji can float out into the left margin,
+   vertically centered against that paragraph. Below 900px there's no margin
+   to float into, so it drops inline to the left instead. */
+.bug-row {
+  position: relative;
+}
+.bug-emoji {
+  position: absolute;
+  right: 100%;
+  top: 50%;
+  transform: translate(-2rem, -50%);
+  font-size: 1.4rem;
+  line-height: 1;
+}
+
+@media (max-width: 900px) {
+  .bug-row {
+    display: flex;
+    align-items: center;
+    gap: 1.25rem;
+    margin: 1rem 0;
+  }
+  .bug-row p {
+    margin: 0;
+  }
+  .bug-emoji {
+    position: static;
+    transform: none;
+    flex: none;
+  }
 }
 
 /* Reading-progress bar, updated by the scroll listener in render_html(). */
@@ -587,6 +642,7 @@ def main() -> None:
         rendered = f"\\[{tex}\\]" if is_display else f"\\({tex}\\)"
         body_html = body_html.replace(f"<!--MATH_BLOCK_{i}-->", rendered)
 
+    body_html = wrap_bug_banners(body_html)
     body_html = make_foldable(body_html)
 
     DOCS.mkdir(exist_ok=True)

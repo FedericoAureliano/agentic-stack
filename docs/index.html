@@ -26,7 +26,7 @@ What can go wrong and what can we do about it?</p>
 FMxAI</a> at the University of
 Waterloo. This blog post is an informal companion to the first three modules of
 the course.</p>
-<section class="fold"><h2><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;</span>User Interface (Agentic SDK)</h2>
+<section class="fold"><h2><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;</span>User Interface</h2>
 <p>Agentic SDKs let you define agents in just a few lines of code. For example,
 the code below defines a simple agent called <code>fib_agent</code> that has access to one
 tool, <code>fib</code>, which takes in an integer <code>n</code> and returns the <code>n</code>-th number in the
@@ -46,7 +46,7 @@ the 33rd Fibonacci number—and it gets the answer right!</p>
 <span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="n">answer</span><span class="p">)</span>
 <span class="go">The thirty-third Fibonacci number is 3524578</span>
 </code></pre></div>
-</section><section class="fold"><h2><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;</span>The Mechanics (Inference Engine)</h2>
+</section><section class="fold"><h2><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;</span>The Mechanics</h2>
 <p>But what in the world just happened? Did the agent use the tool? If so, how?
 How did it know that the tool exists? How did it call it? How did it get the
 result? What do language models have to do with any of this? What is happening?</p>
@@ -60,8 +60,9 @@ result? What do language models have to do with any of this? What is happening?<
 <li><em>returning</em> the result of the tool call as more tokens; and</li>
 <li>repeating from step 3 until we reach a stopping condition.</li>
 </ol>
-<p>Some of these steps are language model specific. To make things as concrete as
-possible, we will walk through the toy example using Qwen3.</p>
+<p>This is known as the agentic loop. Some of the steps are language model
+specific. To make things as concrete as possible, we will walk through the toy
+example using Qwen3.</p>
 <section class="fold"><h3><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;</span>1. Template</h3>
 <p>The first thing we need to do is convert our agentic program into a textual
 prompt. This is usually done with what is called a <em>chat template</em>. The code
@@ -192,7 +193,7 @@ to call functions, generally (wrap the call in <code>&lt;tool_call&gt;</code> an
 <code>&lt;parameter=example_parameter_1&gt;</code> tag).</p>
 </section><section class="fold"><h3><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;</span>2. Tokens</h3>
 <p>Language models do not operate on text, though. They operate on tokens. And
-generating tokens is slightly more involved than you might expect. </p>
+generating tokens is slightly more involved than you might expect.</p>
 <p>At a high level, you can think of tokens as the langauge model's atomic units
 of generation. These include special tokens, like <code>&lt;|im_start|&gt;</code>. In formal
 language theory, we would call the set of tokens the alphabet of the language
@@ -209,10 +210,10 @@ tokens in two different ways:</p>
 <li><code>th</code>·<code>eme</code>, and</li>
 <li><code>theme</code>.</li>
 </ol>
-<p>But which way is correct? It totally depends on what the language model was
+<div class="bug-row"><span aria-hidden="true" class="bug-emoji" title="known rough edge">🐛</span><p>But which way is correct? It totally depends on what the language model was
 trained on. Suppose for example that the token <code>theme</code> was never used in the
 pre-training. Using it at inference time would totally throw off the language
-model and likely lead to suboptimal results.</p>
+model and likely lead to suboptimal results.</p></div>
 <p>To avoid these issues, language model providers define their tokenizers,
 usually in a config file. Libraries like Hugging Faces's tokenizer library, can
 load these configs and quickly encode your text into a sequence of tokens that
@@ -244,7 +245,7 @@ according to the training data. There are many strategies for using these
 probability distributions to generate good response sequences. See for example,
 <a href="https://huggingface.co/blog/how-to-generate">How to generate text: using different decoding methods for language generation
 with Transformers</a> for a nice
-overview. </p>
+overview.</p>
 <p>For the purpose of this blog post, it is enough to know that we will use one of
 these procedures to generate a sequence of tokens that corresponds to text like
 the following.</p>
@@ -264,56 +265,114 @@ the following.</p>
 text begins with <code>&lt;|im_start|&gt;assistant</code> and ends with a matching <code>&lt;|im_end|&gt;</code>.
 Second, there is an XML block starting with <code>&lt;think&gt;</code> and ending with a
 matching <code>&lt;/think&gt;</code>. Third, there is an XML block starting with <code>&lt;tool_call&gt;</code>,
-ending with a matching <code>&lt;/tool_call&gt;</code>, and containing a nested
-<code>&lt;function=fib&gt;</code> block whose <code>&lt;parameter=n&gt;</code> tag carries the argument, as
-defined in the prompt preamble from before.</p>
-<p><a href="https://rlhfbook.com/">Nathan Lambert's Textbook</a> describes how language
+ending with a matching <code>&lt;/tool_call&gt;</code>, and containing a nested <code>&lt;function=fib&gt;</code>
+block whose <code>&lt;parameter=n&gt;</code> tag carries the argument, as defined in the prompt
+preamble from before.</p>
+<div class="bug-row"><span aria-hidden="true" class="bug-emoji" title="known rough edge">🐛</span><p><a href="https://rlhfbook.com/">Nathan Lambert's Textbook</a> describes how language
 models are trained to follow these formats. But none of this is guaranteed by
 and it is common for engineers to include code that will automatically repair
 sequences that do not adhere to the required format. For example,
 <a href="https://huggingface.co/froggeric/Qwen3.5-35B-A3B-Uncensored-FernflowerAI-MLX-8bit/blob/main/chat_template.jinja#L116">here</a>
 is a jinja template that processes assitant messages to make sure that
-<code>&lt;think&gt;</code> blocks are closed with <code>&lt;/think&gt;</code> before tool call blocks.</p>
+<code>&lt;think&gt;</code> blocks are closed with <code>&lt;/think&gt;</code> before tool call blocks.</p></div>
 </section><section class="fold"><h3><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;</span>4. Recognize</h3>
 <p>Once we have generated a sequence of tokens <code>&lt;|im_start|&gt;assistant ...
 &lt;|im_end|&gt;</code>, we have to process it. The tokens inside of thinking blocks will
 be handled differently than the tokens inside of tool call blocks, which will
-be handled differently than top-level tokens. For our example, let's assume
-that thinking tokens are ignored, and that top-level tokens become the output
-of the model. This leaves the tool call block.</p>
-<p>Inference engines, like <a href="https://github.com/vllm-project/vllm">vLLM</a>, include
-parsers for every language model that they support. For example, here is the
-<a href="https://github.com/vllm-project/vllm/blob/main/vllm/parser/qwen3.py">parser for
+be handled differently than top-level tokens. Inference engines, like
+<a href="https://github.com/vllm-project/vllm">vLLM</a>, include parsers for every
+language model that they support. For example, here is the <a href="https://github.com/vllm-project/vllm/blob/main/vllm/parser/qwen3.py">parser for
 Qwen3</a>,
 which transorms the output of the generation step into a JSON object. This is
-what we mean by "recognize" the tool calls: find them and package them up for
-the next step.</p>
-<p>If the language model uses slightly different format, the parser can fail and
-you can run into trouble. For example, today, Claude gave me output like this
-<code>(cite index="9-1"&gt;...&lt;/cite&gt;</code> which probably should have rendered as a
-clickable citation. I suspect the citation parser was expecting an opening
-angle bracket, <code>&lt;</code>, instead of an opening round bracket, <code>(</code>, before the word
-<code>cite</code>. Since the harness did not recognize the citation, the text flowed
-through to me, the user, directly.</p>
+what we mean by "recognize" the tool calls, thinking steps, and responses: find
+them and package them up for the next step.</p>
+<div class="codehilite"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">"role"</span><span class="p">:</span><span class="w"> </span><span class="s2">"assistant"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"content"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"reasoning_content"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The user wants the 33rd Fibonacci number. Rather than compute it by hand, I'll call the fib function with n=33."</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"tool_calls"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">"id"</span><span class="p">:</span><span class="w"> </span><span class="s2">"call_1"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"function"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"function"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"fib"</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">"arguments"</span><span class="p">:</span><span class="w"> </span><span class="s2">"{\"n\": 33}"</span>
+<span class="w">      </span><span class="p">}</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">]</span>
+<span class="p">}</span>
+</code></pre></div>
+<div class="bug-row"><span aria-hidden="true" class="bug-emoji" title="known rough edge">🐛</span><p>If the language model uses slightly
+different format, the parser can fail and you can run into trouble. For
+example, today, Claude gave me output like this <code>(cite index="9-1"&gt;...&lt;/cite&gt;</code>
+which probably should have rendered as a clickable citation. I suspect the
+citation parser was expecting an opening angle bracket, <code>&lt;</code>, instead of an
+opening round bracket, <code>(</code>, before the word <code>cite</code>. Since their parser did not
+recognize the citation, the text flowed through to me, the user, directly. You
+can find another similar example in the vLLM project, where <a href="https://github.com/vllm-project/vllm/issues/39056">a failure in the
+parser resulted in silently dropping tool
+calls</a>.</p></div>
 </section><section class="fold"><h3><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;</span>5. Call</h3>
-<div class="codehilite"><pre><span></span><code><span class="n">tool_fn</span> <span class="o">=</span> <span class="n">fib_agent</span><span class="o">.</span><span class="n">tools</span><span class="p">[</span><span class="s2">"fib"</span><span class="p">]</span>
-<span class="n">result</span> <span class="o">=</span> <span class="n">tool_fn</span><span class="p">(</span><span class="n">n</span><span class="o">=</span><span class="s2">"33"</span><span class="p">)</span>
+<p>Once we have the response in JSON format, we can process it and actually make
+the tool calls that the langauge model requested. The langauge model cannot do
+anything directly. The agent harness, the inference runtime, and the serving
+engine are its arms, feet, and heart. The following code shows how we could
+implement the tool calls themselves in an agentic harness, assuming the parsing
+results are in a variable called <code>response</code>.</p>
+<div class="codehilite"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+
+<span class="n">results</span> <span class="o">=</span> <span class="p">{}</span>
+<span class="k">for</span> <span class="n">tool_call</span> <span class="ow">in</span> <span class="n">response</span><span class="p">[</span><span class="s2">"tool_calls"</span><span class="p">]:</span>
+    <span class="n">name</span> <span class="o">=</span> <span class="n">tool_call</span><span class="p">[</span><span class="s2">"function"</span><span class="p">][</span><span class="s2">"name"</span><span class="p">]</span>
+    <span class="n">args</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">tool_call</span><span class="p">[</span><span class="s2">"function"</span><span class="p">][</span><span class="s2">"arguments"</span><span class="p">])</span>
+    <span class="n">tool_fn</span> <span class="o">=</span> <span class="n">fib_agent</span><span class="o">.</span><span class="n">tools</span><span class="p">[</span><span class="n">name</span><span class="p">]</span>
+    <span class="n">results</span><span class="p">[</span><span class="n">tool_call</span><span class="p">[</span><span class="s2">"id"</span><span class="p">]]</span> <span class="o">=</span> <span class="n">tool_fn</span><span class="p">(</span><span class="o">**</span><span class="n">args</span><span class="p">)</span>
 </code></pre></div>
 </section><section class="fold"><h3><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;</span>6. Return</h3>
-<p>For Qwen, "tool results are treated as special user messages." Models like GLM use an actual <code>&lt;|observation|&gt;</code> role for this instead.</p>
+<p>For Qwen3, "tool results are treated as special user messages." Models like GLM
+use an actual <code>&lt;|observation|&gt;</code> role for this instead. Either way, the chat
+template handles the encoding so that we don't have to worry about the details.
+For Qwen3, the result of our tool call can be sent back to the langauge model
+as the following text (appropriately tokenized by the tokenizer, as before).</p>
 <pre class="codehilite qwen3-tokens"><code><span class="tk tk-im">&lt;|im_start|&gt;</span><span class="tk">user</span><span class="tk">
 </span><span class="tk tk-tool">&lt;tool_response&gt;</span><span class="tk">
 </span><span class="tk">3</span><span class="tk">5</span><span class="tk">2</span><span class="tk">4</span><span class="tk">5</span><span class="tk">7</span><span class="tk">8</span><span class="tk">
 </span><span class="tk tk-tool">&lt;/tool_response&gt;</span><span class="tk">
 </span><span class="tk tk-im">&lt;|im_end|&gt;</span></code></pre>
+<p>At this point, we return to step 3 to generate more tokens using the underlying
+language model.</p>
 </section><section class="fold"><h3><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;</span>7. End</h3>
+<p>Eventually, we will generate a sequence of tokens that has no tool calls. Like
+the following.</p>
 <pre class="codehilite qwen3-tokens"><code><span class="tk tk-im">&lt;|im_start|&gt;</span><span class="tk">assistant</span><span class="tk">
 </span><span class="tk tk-think">&lt;think&gt;</span><span class="tk">
 </span><span class="tk">The</span><span class="tk"> fib</span><span class="tk"> function</span><span class="tk"> returned</span><span class="tk"> </span><span class="tk">3</span><span class="tk">5</span><span class="tk">2</span><span class="tk">4</span><span class="tk">5</span><span class="tk">7</span><span class="tk">8</span><span class="tk">.</span><span class="tk"> That</span><span class="tk">'s</span><span class="tk"> the</span><span class="tk"> answer</span><span class="tk"> to</span><span class="tk"> give</span><span class="tk"> the</span><span class="tk"> user</span><span class="tk">.
 </span><span class="tk tk-think">&lt;/think&gt;</span><span class="tk">
 </span><span class="tk">The</span><span class="tk"> thirty</span><span class="tk">-third</span><span class="tk"> Fibonacci</span><span class="tk"> number</span><span class="tk"> is</span><span class="tk"> </span><span class="tk">3</span><span class="tk">5</span><span class="tk">2</span><span class="tk">4</span><span class="tk">5</span><span class="tk">7</span><span class="tk">8</span><span class="tk">
 </span><span class="tk tk-im">&lt;|im_end|&gt;</span></code></pre>
+<p>If we want, we could send a message to the language model telling it to think
+some more or that it needs to continue for some other reason. If the language
+model asks the user a question, perhaps we can identify that and start an
+interaction with an end-user. Otherwise, these tool-call-free messages can be
+interpreted as the end of the agentic loop and we can return the content of the
+JSON message as the final response.</p>
+<div class="codehilite"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">"role"</span><span class="p">:</span><span class="w"> </span><span class="s2">"assistant"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"content"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The thirty-third Fibonacci number is 3524578"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"reasoning_content"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The fib function returned 3524578. That's the answer to give the user."</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"tool_calls"</span><span class="p">:</span><span class="w"> </span><span class="p">[]</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>In short, that is how we get the following behaviour that we started with.</p>
+<div class="codehilite"><pre><span></span><code><span class="gp">&gt;&gt;&gt; </span><span class="n">answer</span> <span class="o">=</span> <span class="n">fib_agent</span><span class="p">(</span><span class="s2">"What is the thirty-third Fibonacci number?"</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="n">answer</span><span class="p">)</span>
+<span class="go">The thirty-third Fibonacci number is 3524578</span>
+</code></pre></div>
 </section></section><section class="fold"><h2><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;</span>Concerns and Interventions</h2>
+<p>A million things can and do go wrong during this process. In the text above, I
+noted three example bugs. One related to tokenizing, one related to instruction
+following formats, and one related to parsing. In this section, I will quickly
+go over a few more pressing concerns and possible ways to deal with them.</p>
 <section class="fold"><h3><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;</span>Token Cost and Context Window Size</h3>
 <p>Claude Fable 5 tokens cost $10 / MTok for inputs and $50 / MTok for outputs.
 Each digit is one token so if I ask this agent for the 10,367,321st Fibonacci
@@ -324,36 +383,56 @@ context window, so this wouldn't work anyway.</p>
 the same issue. An agent that reads from a database might bite off more than it
 can chew (or that you can afford for it to chew). An agent that uses an
 automated theorem prover might not be able to digest the proof it gets back.</p>
-<section class="fold"><h4><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;&gt;</span>Solution 1: Prompting</h4>
-<p>We could ask the LLM politely to not call <code>fib</code> with too large of an argument.</p>
-</section><section class="fold"><h4><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;&gt;</span>Solution 2: Design</h4>
-</section><section class="fold"><h4><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;&gt;</span>Solution 3: Monitors (Hooks)</h4>
-</section></section><section class="fold"><h3><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;</span>Tool Interface Errors</h3>
-<section class="fold"><h4><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;&gt;</span>Solution 1: Prompting</h4>
-</section><section class="fold"><h4><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;&gt;</span>Solution 2: Grammar Constraind Decoding</h4>
-<section class="fold"><h5><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;&gt;&gt;</span>Do Tokens and Non-Terminals Align?</h5>
-</section></section></section><section class="fold"><h3><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;</span>Multiple Tool Calls</h3>
-<p>Imagine that we ask for two <code>fib</code> tool calls, we execute them in parallel, and the results come back out of order. Will we give the user the right response? </p>
-<section class="fold"><h4><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;&gt;</span>Solution 1: Tool Call IDs</h4>
-<p>Qwen doesn't support tool call IDs, but other models do.</p>
-</section><section class="fold"><h4><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;&gt;</span>Solution 2: Pure Functions</h4>
-</section></section><section class="fold"><h3><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;</span>End-to-End Correctness</h3>
+<p>We could ask the langauge model politely to not call <code>fib</code> with too large of an
+argument. That would probably work most of the time.</p>
+<p>We could design the <code>fib</code> function so that it rejects large values of <code>n</code>.</p>
+<div class="codehilite"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">fib</span><span class="p">(</span><span class="n">n</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Return the nth Fibonacci number"""</span>
+    <span class="k">if</span> <span class="n">n</span> <span class="o">&gt;=</span> <span class="mi">1000</span><span class="p">:</span>
+        <span class="k">return</span> <span class="o">-</span><span class="mi">1</span>
+    <span class="k">if</span> <span class="n">n</span> <span class="o">&lt;=</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">n</span>
+    <span class="k">return</span> <span class="n">fib</span><span class="p">(</span><span class="n">n</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span> <span class="o">+</span> <span class="n">fib</span><span class="p">(</span><span class="n">n</span> <span class="o">-</span> <span class="mi">2</span><span class="p">)</span>
+</code></pre></div>
+<p>We could also instrument the harness or inference engine to avoid such cases,
+generally. For example, we code add a code hook that intercepts all messages to
+the language model and, if they are too big, redirects them to a file or just
+outright replaces them with a warning message.</p>
+</section><section class="fold"><h3><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;</span>Tool Interface Errors</h3>
+<p>The one argument to our <code>fib</code> function is very simple: it is just an integer
+number. But many other tools have much more complicated types. For example, in
+<a href="https://arxiv.org/pdf/2608.05493">one of our recent papers</a>, we found that 23%
+of services expose a string parameter that must conform to a domain-specific
+language and that for one AWS domain-specific language, language models
+frequently make syntactic mistakes. We can give language models tools, but they
+might just struggle to use them correctly.</p>
+<p>There is a growing body of work that addresses these issues with prompting,
+constrained decoding, and other kinds of techniques. We will survey this area
+on Sep 29 in the <a href="https://federico.morarocha.ca/CS846-FMxAI/">FMxAI course</a>.</p>
+</section><section class="fold"><h3><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;</span>Concurrent Tool Calls</h3>
+<p>Imagine that we ask for two <code>fib</code> tool calls, we execute them in parallel, and
+the results come back out of order. Will we give the user the right response?
+Or what if these tools have side-effects and interfere with each other? Tool
+calling can lead to many concurency bugs which agent harnesses and SDKs must
+deal with, but very few do.</p>
 </section><section class="fold"><h3><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;</span>Hacking the Harness (From Within)</h3>
 <p>The famous <a href="https://metr.org/blog/2026-08-26-openai-hugging-face-incident-investigation/">METR
 report</a>
 disclosed that, during OpenAI's Hugging Face incident, "Agents successfully
 prototyped techniques to 'spoof' tool calls by substituting a different command
-for the command they appeared to run." Can a malicious LLM spoof tool calls in
-our setup? Or worse, can an LLM generate a sequence of tokens that will make
-the harness run arbitrary code?</p>
-<section class="fold"><h4><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;&gt;</span>Solution 1: Formal Harness Verification</h4>
-<p>These kinds of injection attacks are not new or rare (see e.g., <a href="https://owasp.org/www-community/Injection_Flaws">"injection
-flaws"</a>). In our case, we want
-to prove that no sequence of tokens can result in the execution of a function
-other than <code>fib</code>. The formal methods community has been working on similar
-problems for years (see e.g., <a href="https://sos-vo.org/system/files/sos_files/String_Solvers_for_Web_Security.pdf">String Solvers for Web
+for the command they appeared to run." Can a malicious langauge model spoof
+tool calls in our setup? Or worse, can an langauge model generate a sequence of
+tokens that will make the harness run arbitrary code? That might sound crazy,
+but here is a <a href="https://github.com/vllm-project/vllm/pull/21396#discussion_r2223397938">pull request in the vLLM
+project</a>
+that attempted to add a direct python <code>eval</code> call in the parser for tool call
+parameters.</p>
+<p>More sophisticated code injection attacks from within are likely possible.
+Luckily, these kinds of attacks are not new (see e.g., <a href="https://owasp.org/www-community/Injection_Flaws">"injection
+flaws"</a>) and we have tools to
+defend against them (see e.g., <a href="https://sos-vo.org/system/files/sos_files/String_Solvers_for_Web_Security.pdf">String Solvers for Web
 Security</a>).
-These are issues that formal methods can help prevent!</p></section></section></section>
+These are issues that formal methods can help prevent!</p></section></section>
 </main>
 <script>
 window.onscroll = function () { updateScroller(); };
