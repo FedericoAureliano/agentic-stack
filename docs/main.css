@@ -75,7 +75,7 @@ main {
    each <!-- ADD BUG BANNER HERE --> placeholder with the paragraph right
    after it into one row, so the emoji can float out into the left margin,
    vertically centered against that paragraph. Below 900px there's no margin
-   to float into, so it drops inline to the left instead. */
+   to float into, so it stacks above the paragraph instead. */
 .bug-row {
   position: relative;
 }
@@ -91,8 +91,9 @@ main {
 @media (max-width: 900px) {
   .bug-row {
     display: flex;
-    align-items: center;
-    gap: 1.25rem;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.35rem;
     margin: 1rem 0;
   }
   .bug-row p {
@@ -130,6 +131,16 @@ main {
   min-width: 560px;
   height: auto;
   margin: 0 auto;
+}
+
+/* Below 900px the frozen-final-frame diagram (see the .evt rule further
+   down) is read as a static figure rather than scrubbed through via
+   horizontal scroll, so let it shrink below 560px to fit the viewport
+   instead of forcing the scrollbar. */
+@media (max-width: 900px) {
+  .loop-svg {
+    min-width: 0;
+  }
 }
 .lane-box {
   fill: none;
@@ -240,6 +251,16 @@ main {
 @media (prefers-reduced-motion: reduce) {
   .evt {
     animation: none !important;
+    opacity: 1;
+  }
+}
+
+/* On narrow (mobile) screens the animated build-up is hard to follow at the
+   diagram's cramped scaled-down size, so freeze it on its final frame — all
+   stages revealed at once — instead of looping. */
+@media (max-width: 900px) {
+  .evt {
+    animation: none;
     opacity: 1;
   }
 }
