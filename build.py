@@ -14,6 +14,7 @@ Run with `uv run build.py` every time index.md changes.
 
 import html
 import re
+import shutil
 from pathlib import Path
 
 import markdown
@@ -22,6 +23,7 @@ from tokenizers import Tokenizer
 
 ROOT = Path(__file__).parent
 SOURCE = ROOT / "index.md"
+FAVICON = ROOT / "favicon.svg"
 DOCS = ROOT / "docs"
 
 QWEN3_TOKENIZER = "Qwen/Qwen3-0.6B"
@@ -55,6 +57,54 @@ def extract_qwen3_blocks(md_text: str) -> tuple[str, list[str]]:
         return f"<!--QWEN3_BLOCK_{len(blocks) - 1}-->"
 
     return QWEN3_FENCE_RE.sub(replace, md_text), blocks
+
+
+# Any fenced code block, generic (not just ```qwen3```), so math extraction
+# below can skip over code content and leave literal "$" signs in code alone.
+ANY_FENCE_RE = re.compile(r"^```.*?\n.*?^```[ \t]*$", re.DOTALL | re.MULTILINE)
+
+# $$...$$ display math, spanning possibly multiple lines.
+DISPLAY_MATH_RE = re.compile(r"\$\$(.+?)\$\$", re.DOTALL)
+
+# $...$ inline math. Follows Pandoc's heuristic for telling math apart from
+# literal currency: the char right after the opening $ and right before the
+# closing $ must not be whitespace, and the closing $ must not be followed by
+# a digit. That's what keeps "$10 / MTok ... and $50 / MTok" from being
+# misread as math while still catching "$\Sigma$."
+INLINE_MATH_RE = re.compile(r"\$(?!\s)([^\n$]+?)(?<!\s)\$(?!\d)")
+
+
+def extract_math_blocks(md_text: str) -> tuple[str, list[tuple[str, bool]]]:
+    """Pull $...$ and $$...$$ spans out of md_text (skipping fenced code
+    blocks) and replace them with HTML-comment placeholders that
+    python-markdown passes through untouched. Returns the rewritten text and
+    the list of (tex, is_display) pairs, indexed by placeholder number, to be
+    spliced back in as MathJax delimiters after the markdown conversion.
+    """
+    blocks: list[tuple[str, bool]] = []
+
+    def extract_from_segment(segment: str) -> str:
+        def replace_display(match: re.Match) -> str:
+            blocks.append((match.group(1), True))
+            return f"<!--MATH_BLOCK_{len(blocks) - 1}-->"
+
+        segment = DISPLAY_MATH_RE.sub(replace_display, segment)
+
+        def replace_inline(match: re.Match) -> str:
+            blocks.append((match.group(1), False))
+            return f"<!--MATH_BLOCK_{len(blocks) - 1}-->"
+
+        return INLINE_MATH_RE.sub(replace_inline, segment)
+
+    out = []
+    pos = 0
+    for fence in ANY_FENCE_RE.finditer(md_text):
+        out.append(extract_from_segment(md_text[pos : fence.start()]))
+        out.append(fence.group(0))
+        pos = fence.end()
+    out.append(extract_from_segment(md_text[pos:]))
+
+    return "".join(out), blocks
 
 
 HEADING_TAGS = {"h2", "h3", "h4", "h5", "h6"}
@@ -148,12 +198,16 @@ def render_html(meta: dict[str, str], body_html: str) -> str:
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{title}</title>
 <meta name="author" content="{author}">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="main.css">
+<script data-goatcounter="https://federicoaureliano.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js" id="MathJax-script" async></script>
 </head>
 <body>
+<div id="scroller"></div>
 <main>
 <div class="header-row">
 <h1>{title}</h1>
@@ -162,6 +216,15 @@ def render_html(meta: dict[str, str], body_html: str) -> str:
 {body_html}
 </main>
 <script>
+window.onscroll = function () {{ updateScroller(); }};
+function updateScroller() {{
+  var winScroll = document.body.scrollTop || document.documentElement.scrollTop;
+  var height = document.documentElement.scrollHeight - document.documentElement.clientHeight;
+  var scrolled = height > 0 ? (winScroll / height) * 100 : 0;
+  scrolled = Math.min(100, Math.max(0, scrolled));
+  document.getElementById('scroller').style.setProperty('--scroller-width', (100 - scrolled) + '%');
+}}
+
 document.querySelectorAll('.fold-arrow').forEach(function (arrow) {{
   function toggle() {{
     var section = arrow.closest('.fold');
@@ -255,6 +318,31 @@ main {
   padding: 3rem 1.25rem 4rem;
 }
 
+/* Reading-progress bar, updated by the scroll listener in render_html(). */
+#scroller {
+  height: 0.4rem;
+  width: 100%;
+  position: fixed;
+  left: 0;
+  top: 0;
+  background-color: var(--border);
+  --scroller-width: 100%;
+  z-index: 10;
+}
+
+#scroller::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+  width: var(--scroller-width);
+  background-color: var(--color-accent);
+  border-top-right-radius: 4px;
+  border-bottom-right-radius: 4px;
+  transition: width 0.1s ease-out;
+}
+
 .header-row {
   display: flex;
   align-items: baseline;
@@ -274,8 +362,8 @@ h1, h2, h3, h4, h5 {
 h1 { font-size: 20px; margin: 0; }
 h2 { font-size: 17px; margin: 2rem 0 0.5rem; }
 h3 { font-size: 15px; margin: 1.5rem 0 0.25rem; }
-h4 { font-size: 15px; margin: 1.25rem 0 0.25rem; }
-h5 { font-size: 15px; margin: 1rem 0 0.25rem; }
+h4 { font-size: 14.5px; margin: 1.25rem 0 0.25rem; }
+h5 { font-size: 14px; margin: 1rem 0 0.25rem; }
 
 .fold-arrow {
   display: inline-block;
@@ -434,6 +522,7 @@ def main() -> None:
     body = re.sub(r"^#[ \t]+.*\n+", "", body, count=1)
 
     body, qwen3_blocks = extract_qwen3_blocks(body)
+    body, math_blocks = extract_math_blocks(body)
 
     body_html = markdown.markdown(
         body,
@@ -456,13 +545,19 @@ def main() -> None:
             rendered = render_qwen3_block(raw, tokenizer)
             body_html = body_html.replace(f"<!--QWEN3_BLOCK_{i}-->", rendered)
 
+    for i, (tex, is_display) in enumerate(math_blocks):
+        tex = html.escape(tex)
+        rendered = f"\\[{tex}\\]" if is_display else f"\\({tex}\\)"
+        body_html = body_html.replace(f"<!--MATH_BLOCK_{i}-->", rendered)
+
     body_html = make_foldable(body_html)
 
     DOCS.mkdir(exist_ok=True)
     (DOCS / "index.html").write_text(render_html(meta, body_html), encoding="utf-8")
     (DOCS / "main.css").write_text(MAIN_CSS, encoding="utf-8")
+    shutil.copyfile(FAVICON, DOCS / "favicon.svg")
 
-    print(f"Built {DOCS / 'index.html'} and {DOCS / 'main.css'}")
+    print(f"Built {DOCS / 'index.html'}, {DOCS / 'main.css'}, and {DOCS / 'favicon.svg'}")
 
 
 if __name__ == "__main__":

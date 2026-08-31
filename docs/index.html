@@ -5,12 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Programming the Agentic Stack</title>
 <meta name="author" content="Federico Mora">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="main.css">
+<script data-goatcounter="https://federicoaureliano.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js" id="MathJax-script" async></script>
 </head>
 <body>
+<div id="scroller"></div>
 <main>
 <div class="header-row">
 <h1>Programming the Agentic Stack</h1>
@@ -28,8 +32,7 @@ the code below defines a simple agent called <code>fib_agent</code> that has acc
 tool, <code>fib</code>, which takes in an integer <code>n</code> and returns the <code>n</code>-th number in the
 Fibonacci sequence. This is a silly example, but we will see that it is
 surprisingly illustrative.</p>
-<div class="codehilite"><pre><span></span><code><span class="nd">@tool</span>
-<span class="k">def</span><span class="w"> </span><span class="nf">fib</span><span class="p">(</span><span class="n">n</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<div class="codehilite"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">fib</span><span class="p">(</span><span class="n">n</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Return the nth Fibonacci number"""</span>
     <span class="k">if</span> <span class="n">n</span> <span class="o">&lt;=</span> <span class="mi">1</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">n</span>
@@ -57,22 +60,44 @@ result? What do language models have to do with any of this? What is happening?<
 <li><em>returning</em> the result of the tool call as more tokens; and</li>
 <li>repeating from step 3 until we generate a special <em>end</em> token.</li>
 </ol>
-<p>Many of these steps are language model specific. To make things as concrete as
-possible, we will walk through the toy example using Qwen3 syntax and
-standards.</p>
+<p>Some of these steps are language model specific. To make things as concrete as
+possible, we will walk through the toy example using Qwen3.</p>
 <section class="fold"><h3><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;</span>1. Template</h3>
+<p>The first thing we need to do is convert our agentic program into a textual
+prompt. This is usually done with what is called a <em>chat template</em>. The code
+below is one example of such a template: it is snippet of a <a href="(https://github.com/QwenLM/Qwen3/blob/7a2f61ffc7a20d47efcd2bf97f6f2bf52729042e/docs/source/assets/qwen3_nonthinking.jinja)">Jinja file
+provided by the authors of
+Qwen3</a>.
+You can think of this as a program that takes in tool defintions (like <code>fib</code>)
+and messages (like "What is the thirty-third Fibonacci number?") and generates
+text in the format that the language model expects to work on.</p>
 <div class="codehilite"><pre><span></span><code><span class="cp">{%</span>- <span class="k">if</span> <span class="nv">tools</span> <span class="cp">%}</span>
-<span class="x">  </span><span class="cp">{{</span><span class="o">-</span> <span class="s1">'&lt;|im_start|&gt;system\n'</span> <span class="cp">}}</span>
-<span class="x">  </span><span class="cp">{%</span>- <span class="k">if</span> <span class="nv">messages</span><span class="o">[</span><span class="m">0</span><span class="o">]</span><span class="nv">.role</span> <span class="o">==</span> <span class="s1">'system'</span> <span class="cp">%}</span>
-<span class="x">    </span><span class="cp">{{</span><span class="o">-</span> <span class="nv">messages</span><span class="o">[</span><span class="m">0</span><span class="o">]</span><span class="nv">.content</span> <span class="o">+</span> <span class="s1">'\n\n'</span> <span class="cp">}}</span>
-<span class="x">  </span><span class="cp">{%</span>- <span class="k">endif</span> <span class="cp">%}</span>
-<span class="x">  </span><span class="cp">{{</span><span class="o">-</span> <span class="s2">"# Tools\n\nYou may call one or more functions to assist with the user query.\n\nYou are provided with function signatures within &lt;tools&gt;&lt;/tools&gt; XML tags:\n&lt;tools&gt;"</span> <span class="cp">}}</span>
-<span class="x">  </span><span class="cp">{%</span>- <span class="k">for</span> <span class="nv">tool</span> <span class="k">in</span> <span class="nv">tools</span> <span class="cp">%}</span>
-<span class="x">    </span><span class="cp">{{</span><span class="o">-</span> <span class="s2">"\n"</span> <span class="cp">}}{{</span><span class="o">-</span> <span class="nv">tool</span> <span class="o">|</span> <span class="nf">tojson</span> <span class="cp">}}</span>
-<span class="x">  </span><span class="cp">{%</span>- <span class="k">endfor</span> <span class="cp">%}</span>
-<span class="x">  </span><span class="cp">{{</span><span class="o">-</span> <span class="s2">"\n&lt;/tools&gt;\n\nFor each function call, return a json object..."</span> <span class="cp">}}</span>
-<span class="cp">{%</span>- <span class="k">endif</span> <span class="cp">%}</span>
+<span class="x">    </span><span class="cp">{{</span><span class="o">-</span> <span class="s1">'&lt;|im_start|&gt;system\n'</span> <span class="cp">}}</span>
+<span class="x">    </span><span class="cp">{%</span>- <span class="k">if</span> <span class="nv">messages</span><span class="o">[</span><span class="m">0</span><span class="o">]</span><span class="nv">.role</span> <span class="o">==</span> <span class="s1">'system'</span> <span class="cp">%}</span>
+<span class="x">        </span><span class="cp">{{</span><span class="o">-</span> <span class="nv">messages</span><span class="o">[</span><span class="m">0</span><span class="o">]</span><span class="nv">.content</span> <span class="o">+</span> <span class="s1">'\n\n'</span> <span class="cp">}}</span>
+<span class="x">    </span><span class="cp">{%</span>- <span class="k">endif</span> <span class="cp">%}</span>
+<span class="x">    </span><span class="cp">{{</span><span class="o">-</span> <span class="s2">"# Tools\n\nYou may call one or more functions to assist with the user query.\n\nYou are provided with function signatures within &lt;tools&gt;&lt;/tools&gt; XML tags:\n&lt;tools&gt;"</span> <span class="cp">}}</span>
+<span class="x">    </span><span class="cp">{%</span>- <span class="k">for</span> <span class="nv">tool</span> <span class="k">in</span> <span class="nv">tools</span> <span class="cp">%}</span>
+<span class="x">        </span><span class="cp">{{</span><span class="o">-</span> <span class="s2">"\n"</span> <span class="cp">}}</span>
+<span class="x">        </span><span class="cp">{{</span><span class="o">-</span> <span class="nv">tool</span> <span class="o">|</span> <span class="nf">tojson</span> <span class="cp">}}</span>
+<span class="x">    </span><span class="cp">{%</span>- <span class="k">endfor</span> <span class="cp">%}</span>
+<span class="x">    </span><span class="cp">{{</span><span class="o">-</span> <span class="s2">"\n&lt;/tools&gt;\n\nFor each function call, return a json object with function name and arguments within &lt;tool_call&gt;&lt;/tool_call&gt; XML tags:\n&lt;tool_call&gt;\n{\"name\": &lt;function-name&gt;, \"arguments\": &lt;args-json-object&gt;}\n&lt;/tool_call&gt;&lt;|im_end|&gt;\n"</span> <span class="cp">}}</span>
+<span class="cp">{%</span>- <span class="k">else</span> <span class="cp">%}</span>
+<span class="x">...</span>
+<span class="cp">{%</span>- <span class="k">for</span> <span class="nv">message</span> <span class="k">in</span> <span class="nv">messages</span> <span class="cp">%}</span>
+<span class="x">    </span><span class="cp">{%</span>- <span class="k">if</span> <span class="nv">message.content</span> <span class="k">is</span> <span class="nf">string</span> <span class="cp">%}</span>
+<span class="x">        </span><span class="cp">{%</span>- <span class="k">set</span> <span class="nv">content</span> <span class="o">=</span> <span class="nv">message.content</span> <span class="cp">%}</span>
+<span class="x">    </span><span class="cp">{%</span>- <span class="k">else</span> <span class="cp">%}</span>
+<span class="x">        </span><span class="cp">{%</span>- <span class="k">set</span> <span class="nv">content</span> <span class="o">=</span> <span class="s1">''</span> <span class="cp">%}</span>
+<span class="x">    </span><span class="cp">{%</span>- <span class="k">endif</span> <span class="cp">%}</span>
+<span class="x">    </span><span class="cp">{%</span>- <span class="k">if</span> <span class="o">(</span><span class="nv">message.role</span> <span class="o">==</span> <span class="s2">"user"</span><span class="o">)</span> <span class="k">or</span> <span class="o">(</span><span class="nv">message.role</span> <span class="o">==</span> <span class="s2">"system"</span> <span class="k">and</span> <span class="k">not</span> <span class="nb">loop</span><span class="nv">.first</span><span class="o">)</span> <span class="cp">%}</span>
+<span class="x">        </span><span class="cp">{{</span><span class="o">-</span> <span class="s1">'&lt;|im_start|&gt;'</span> <span class="o">+</span> <span class="nv">message.role</span> <span class="o">+</span> <span class="s1">'\n'</span> <span class="o">+</span> <span class="nv">content</span> <span class="o">+</span> <span class="s1">'&lt;|im_end|&gt;'</span> <span class="o">+</span> <span class="s1">'\n'</span> <span class="cp">}}</span>
+<span class="x">    ...</span>
+<span class="cp">{%</span>- <span class="k">endfor</span> <span class="cp">%}</span>
+<span class="x">...</span>
 </code></pre></div>
+<p>Specifically, for our example, that Jinja code will generate the following text
+prompt.</p>
 <pre class="codehilite qwen3-tokens"><code><span class="tk tk-im">&lt;|im_start|&gt;</span><span class="tk">system</span><span class="tk">
 </span><span class="tk">#</span><span class="tk"> Tools</span><span class="tk">
 
@@ -98,13 +123,73 @@ standards.</p>
 </span><span class="tk tk-tool">&lt;tool_call&gt;</span><span class="tk">
 </span><span class="tk">{"</span><span class="tk">name</span><span class="tk">":</span><span class="tk"> &lt;</span><span class="tk">function</span><span class="tk">-name</span><span class="tk">&gt;,</span><span class="tk"> "</span><span class="tk">arguments</span><span class="tk">":</span><span class="tk"> &lt;</span><span class="tk">args</span><span class="tk">-json</span><span class="tk">-object</span><span class="tk">&gt;}
 </span><span class="tk tk-tool">&lt;/tool_call&gt;</span><span class="tk">
-</span><span class="tk tk-im">&lt;|im_end|&gt;</span></code></pre>
-<pre class="codehilite qwen3-tokens"><code><span class="tk tk-im">&lt;|im_start|&gt;</span><span class="tk">user</span><span class="tk">
+</span><span class="tk tk-im">&lt;|im_end|&gt;</span><span class="tk">
+
+</span><span class="tk tk-im">&lt;|im_start|&gt;</span><span class="tk">user</span><span class="tk">
 </span><span class="tk">What</span><span class="tk"> is</span><span class="tk"> the</span><span class="tk"> thirty</span><span class="tk">-third</span><span class="tk"> Fibonacci</span><span class="tk"> number</span><span class="tk">?
 </span><span class="tk tk-im">&lt;|im_end|&gt;</span></code></pre>
+<p>You will notice two important things. First, <code>&lt;|im_start|&gt;</code> and <code>&lt;|im_end|&gt;</code>
+mark individual "input messages" and they are tagged with a role ("system" and
+"user", in this case). Second, the "system" role gives the <code>fib</code> function
+signature and docstring, without the code body, along with instructions on how
+to call functions, generally (generate a json object following a specific
+schema wrapped in specific XML tags).</p>
 </section><section class="fold"><h3><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;</span>2. Tokens</h3>
-<p>Dictionary plus rules (order matters)</p>
+<p>Language models do not operate on text, though. They operate on tokens. And
+generating tokens is slightly more involved than you might expect. </p>
+<p>At a high level, you can think of tokens as the langauge model's atomic units
+of generation. These include special tokens, like <code>&lt;|im_start|&gt;</code>. In formal
+language theory, we would call the set of tokens the alphabet of the language
+(usually denoted \(\Sigma\)). If we want to generate English text, we need to be
+able to translate between the language model's language and English in both
+directions.</p>
+<p>Suppose that <code>th</code>, <code>eme</code>, and <code>theme</code>, are all valid tokens for a given
+language model. The token <code>th</code> could be useful for generating text like "4th",
+"5th", etc; "eme" is a common suffix that could be useful for words like
+"phoneme", "acteme", etc; and "theme" might just be a common enough word to
+merit its own token. In this case, the text "theme" can be translated into
+tokens in two different ways:</p>
+<ol>
+<li><code>th</code>·<code>eme</code>, and</li>
+<li><code>theme</code>.</li>
+</ol>
+<p>But which way is correct? It totally depends on what the language model was
+trained on. Suppose for example that the token <code>theme</code> was never used in the
+pre-training. Using it at inference time would totally throw off the language
+model and likely lead to suboptimal results.</p>
+<p>To avoid these issues, language model providers define their tokenizers,
+usually in a config file. Libraries like Hugging Faces's tokenizer library, can
+load these configs and quickly encode your text into a sequence of tokens that
+the target language model will understand.</p>
+<div class="codehilite"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">transformers</span><span class="w"> </span><span class="kn">import</span> <span class="n">AutoTokenizer</span>
+
+<span class="n">jinja_generated_prompt</span> <span class="o">=</span> <span class="s2">"""&lt;|im_start|&gt;system</span>
+<span class="s2"># Tools</span>
+
+<span class="s2">You may call one or more functions to assist with the user query.</span>
+
+<span class="s2">...</span>
+
+<span class="s2">&lt;|im_start|&gt;user</span>
+<span class="s2">What is the thirty-third Fibonacci number?</span>
+<span class="s2">&lt;|im_end|&gt;</span>
+<span class="s2">"""</span>
+
+<span class="n">tokenizer</span> <span class="o">=</span> <span class="n">AutoTokenizer</span><span class="o">.</span><span class="n">from_pretrained</span><span class="p">(</span><span class="s2">"Qwen/Qwen3-32B"</span><span class="p">)</span>
+<span class="n">input_tokens</span> <span class="o">=</span> <span class="n">tokenizer</span><span class="p">(</span><span class="n">jinja_generated_prompt</span><span class="p">)</span>
+</code></pre></div>
 </section><section class="fold"><h3><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;</span>3. Generate</h3>
+<p>Given a sequence of tokens, language models, like Qwen3, define a probability
+distribution over the set of all tokens. This probability distribution
+represents the likelihood that a given token will appear next in the sequence,
+according to the training data. There are many strategies for using these
+probability distributions to generate good response sequences. See for example,
+<a href="https://huggingface.co/blog/how-to-generate">How to generate text: using different decoding methods for language generation
+with Transformers</a> for a nice
+overview. </p>
+<p>For the purpose of this blog post, it is enough to know that we will use one of
+these procedures to generate a sequence of tokens that corresponds to text like
+the following.</p>
 <pre class="codehilite qwen3-tokens"><code><span class="tk tk-im">&lt;|im_start|&gt;</span><span class="tk">assistant</span><span class="tk">
 </span><span class="tk tk-think">&lt;think&gt;</span><span class="tk">
 </span><span class="tk">The</span><span class="tk"> user</span><span class="tk"> wants</span><span class="tk"> the</span><span class="tk"> </span><span class="tk">3</span><span class="tk">3</span><span class="tk">rd</span><span class="tk"> Fibonacci</span><span class="tk"> number</span><span class="tk">.</span><span class="tk"> Rather</span><span class="tk"> than</span><span class="tk"> compute</span><span class="tk"> it</span><span class="tk"> by</span><span class="tk"> hand</span><span class="tk">,</span><span class="tk"> I</span><span class="tk">'ll</span><span class="tk"> call</span><span class="tk"> the</span><span class="tk"> fib</span><span class="tk"> function</span><span class="tk"> with</span><span class="tk"> n</span><span class="tk">=</span><span class="tk">3</span><span class="tk">3</span><span class="tk">.
@@ -113,18 +198,42 @@ standards.</p>
 </span><span class="tk">{"</span><span class="tk">name</span><span class="tk">":</span><span class="tk"> "</span><span class="tk">fib</span><span class="tk">",</span><span class="tk"> "</span><span class="tk">arguments</span><span class="tk">":</span><span class="tk"> {"</span><span class="tk">n</span><span class="tk">":</span><span class="tk"> </span><span class="tk">3</span><span class="tk">3</span><span class="tk">}}
 </span><span class="tk tk-tool">&lt;/tool_call&gt;</span><span class="tk">
 </span><span class="tk tk-im">&lt;|im_end|&gt;</span></code></pre>
+<p>There are three very important things happening in this text block. First, the
+text begins with <code>&lt;|im_start|&gt;assistant</code> and ends with a matching <code>&lt;|im_end|&gt;</code>.
+Second, there is an XML block starting with <code>&lt;think&gt;</code> and ending with a
+matching <code>&lt;/think&gt;</code>. Third, there is an XML block starting with <code>&lt;tool_call&gt;</code>,
+ending with a matching <code>&lt;tool_call&gt;</code>, and containing a json object
+corresponding to a tool call, as defined in the prompt preamble from before.</p>
+<p><a href="https://rlhfbook.com/">Nathan Lambert's Textbook</a> describes how language
+models are trained to follow these formats. But none of this is guaranteed by
+and it is common for engineers to include code that will automatically repair
+sequences that do not adhere to the required format. For example,
+<a href="https://huggingface.co/froggeric/Qwen3.5-35B-A3B-Uncensored-FernflowerAI-MLX-8bit/blob/main/chat_template.jinja#L116">here</a>
+is a jinja template that processes assitant messages to make sure that
+<code>&lt;think&gt;</code> blocks are closed with <code>&lt;/think&gt;</code> before tool call blocks.</p>
 </section><section class="fold"><h3><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;</span>4. Recognize</h3>
-<div class="codehilite"><pre><span></span><code><span class="c1"># detokenize (order doesn't matter in this direction)</span>
-<span class="c1"># parse the json in &lt;tool_call&gt;...&lt;/tool_call&gt;</span>
-</code></pre></div>
-<p>If the language model uses slightly different format, you can run into trouble.
-For example, today, Claude gave me output like this <code>(cite
-index="9-1"&gt;...&lt;/cite&gt;</code> which probably should have rendered as a clickable
-citation. I suspect the parser was expecting an opening angle bracket, <code>&lt;</code>,
-instead of an opening round bracket, <code>(</code>, before the word <code>cite</code>. Since the
-harness did not recognize the citation, the text flowed through to me, the
-user, directly.</p>
+<p>Once we have generated a sequence of tokens <code>&lt;|im_start|&gt;assistant ...
+&lt;|im_end|&gt;</code>, we have to process it. The tokens inside of thinking blocks will
+be handled differently than the tokens inside of tool call blocks, which will
+be handled differently than top-level tokens. For our example, let's assume
+that thinking tokens are ignored, and that top-level tokens become the output
+of the model. This leaves the tool call block.</p>
+<p>Inference engines, like <a href="https://github.com/vllm-project/vllm">vLLM</a>, include
+parsers for every language model that they support. For example, here is the
+<a href="https://github.com/vllm-project/vllm/blob/main/vllm/parser/qwen3.py">parser for
+Qwen3</a>,
+which transorms the output of the generation step into a json object.</p>
+<p>If the language model uses slightly different format, the parser can fail and
+you can run into trouble. For example, today, Claude gave me output like this
+<code>(cite index="9-1"&gt;...&lt;/cite&gt;</code> which probably should have rendered as a
+clickable citation. I suspect the citation parser was expecting an opening
+angle bracket, <code>&lt;</code>, instead of an opening round bracket, <code>(</code>, before the word
+<code>cite</code>. Since the harness did not recognize the citation, the text flowed
+through to me, the user, directly.</p>
 </section><section class="fold"><h3><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;</span>5. Call</h3>
+<div class="codehilite"><pre><span></span><code><span class="n">tool_fn</span> <span class="o">=</span> <span class="n">fib_agent</span><span class="o">.</span><span class="n">tools</span><span class="p">[</span><span class="s2">"fib"</span><span class="p">]</span>
+<span class="n">result</span> <span class="o">=</span> <span class="n">tool_fn</span><span class="p">(</span><span class="n">n</span><span class="o">=</span><span class="s2">"33"</span><span class="p">)</span>
+</code></pre></div>
 </section><section class="fold"><h3><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;</span>6. Return</h3>
 <p>For Qwen, "tool results are treated as special user messages." Models like GLM use an actual <code>&lt;|observation|&gt;</code> role for this instead.</p>
 <pre class="codehilite qwen3-tokens"><code><span class="tk tk-im">&lt;|im_start|&gt;</span><span class="tk">user</span><span class="tk">
@@ -163,9 +272,34 @@ automated theorem prover might not be able to digest the proof it gets back.</p>
 <section class="fold"><h4><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;&gt;</span>Solution 1: Tool Call IDs</h4>
 <p>Qwen doesn't support tool call IDs, but other models do.</p>
 </section><section class="fold"><h4><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;&gt;</span>Solution 2: Pure Functions</h4>
-</section></section><section class="fold"><h3><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;</span>End-to-End Correctness</h3></section></section>
+</section></section><section class="fold"><h3><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;</span>End-to-End Correctness</h3>
+</section><section class="fold"><h3><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;</span>Hacking the Harness (From Within)</h3>
+<p>The famous <a href="https://metr.org/blog/2026-08-26-openai-hugging-face-incident-investigation/">METR
+report</a>
+disclosed that, during OpenAI's Hugging Face incident, "Agents successfully
+prototyped techniques to 'spoof' tool calls by substituting a different command
+for the command they appeared to run." Can a malicious LLM spoof tool calls in
+our setup? Or worse, can an LLM generate a sequence of tokens that will make
+the harness run arbitrary code?</p>
+<section class="fold"><h4><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;&gt;</span>Solution 1: Formal Harness Verification</h4>
+<p>These kinds of injection attacks are not new or rare (see e.g., <a href="https://owasp.org/www-community/Injection_Flaws">"injection
+flaws"</a>). In our case, we want
+to prove that no sequence of tokens can result in the execution of a function
+other than <code>fib</code>. The formal methods community has been working on similar
+problems for years (see e.g., <a href="https://sos-vo.org/system/files/sos_files/String_Solvers_for_Web_Security.pdf">String Solvers for Web
+Security</a>).
+These are issues that formal methods can help prevent!</p></section></section></section>
 </main>
 <script>
+window.onscroll = function () { updateScroller(); };
+function updateScroller() {
+  var winScroll = document.body.scrollTop || document.documentElement.scrollTop;
+  var height = document.documentElement.scrollHeight - document.documentElement.clientHeight;
+  var scrolled = height > 0 ? (winScroll / height) * 100 : 0;
+  scrolled = Math.min(100, Math.max(0, scrolled));
+  document.getElementById('scroller').style.setProperty('--scroller-width', (100 - scrolled) + '%');
+}
+
 document.querySelectorAll('.fold-arrow').forEach(function (arrow) {
   function toggle() {
     var section = arrow.closest('.fold');
