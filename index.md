@@ -59,7 +59,74 @@ Roughly, under-the-hood, we are
 
 This is known as the agentic loop. Some of the steps are language model
 specific. To make things as concrete as possible, we will walk through the toy
-example using Qwen3.
+example using Qwen3. Here is that whole loop animated end-to-end, as a sequence
+diagram between the user, the SDK, the inference engine, and the LLM. The
+sections below walk through each step in detail.
+
+<div class="loop-anim">
+<div class="loop-svg-wrap">
+<svg class="loop-svg" viewBox="0 0 680 660" role="img" aria-label="Sequence diagram: the user writes the agentic program (Program), the SDK hands the fib tool definition and the question to the inference engine (Template), the inference engine sends the prompt to the LLM (Tokenize), the LLM and the inference engine loop as it samples tokens from it (Generate), the LLM's output reaches the inference engine which recognizes and parses it (Recognize), the inference engine calls the SDK's fib(33) (Call), the SDK returns 3524578 to the inference engine which forwards it to the LLM (Return), and the LLM's final answer travels from the LLM to the inference engine, to the SDK, and to the user (Respond). The loop then clears and repeats from the beginning.">
+<defs>
+<marker id="loop-arrowhead" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+<path class="loop-arrowhead-fill" d="M1,1 L8,5 L1,9"></path>
+</marker>
+</defs>
+<line class="lifeline" x1="70" y1="48" x2="70" y2="634"></line>
+<line class="lifeline" x1="250" y1="48" x2="250" y2="634"></line>
+<line class="lifeline" x1="430" y1="48" x2="430" y2="634"></line>
+<line class="lifeline" x1="610" y1="48" x2="610" y2="634"></line>
+<g class="lane-header">
+<rect class="lane-box" x="10" y="8" width="120" height="40" rx="8"></rect>
+<text class="lane-label" x="70" y="33" text-anchor="middle">User</text>
+<rect class="lane-box" x="190" y="8" width="120" height="40" rx="8"></rect>
+<text class="lane-label" x="250" y="33" text-anchor="middle">SDK</text>
+<rect class="lane-box" x="350" y="8" width="160" height="40" rx="8"></rect>
+<text class="lane-label" x="430" y="33" text-anchor="middle">Inference Engine</text>
+<rect class="lane-box" x="550" y="8" width="120" height="40" rx="8"></rect>
+<text class="lane-label" x="610" y="33" text-anchor="middle">LLM</text>
+</g>
+<g class="evt evt-0">
+<line class="evt-arrow" x1="70" y1="90" x2="250" y2="90" marker-end="url(#loop-arrowhead)"></line>
+<foreignObject x="90" y="69" width="140" height="20"><div class="evt-fo"><a class="evt-fo-link" href="#user-interface">0. Program</a></div></foreignObject>
+</g>
+<g class="evt evt-1">
+<line class="evt-arrow" x1="250" y1="164" x2="430" y2="164" marker-end="url(#loop-arrowhead)"></line>
+<foreignObject x="270" y="143" width="140" height="20"><div class="evt-fo"><a class="evt-fo-link" href="#1-template">1. Template</a></div></foreignObject>
+</g>
+<g class="evt evt-2">
+<line class="evt-arrow" x1="430" y1="238" x2="610" y2="238" marker-end="url(#loop-arrowhead)"></line>
+<foreignObject x="450" y="217" width="140" height="20"><div class="evt-fo"><a class="evt-fo-link" href="#2-tokens">2. Tokenize</a></div></foreignObject>
+</g>
+<g class="evt evt-3">
+<foreignObject x="450" y="283" width="140" height="20"><div class="evt-fo"><a class="evt-fo-link" href="#3-generate">3. Generate</a></div></foreignObject>
+<line class="evt-arrow" x1="610" y1="304" x2="430" y2="304" marker-end="url(#loop-arrowhead)"></line>
+<line class="evt-arrow" x1="430" y1="320" x2="610" y2="320" marker-end="url(#loop-arrowhead)"></line>
+</g>
+<g class="evt evt-4">
+<line class="evt-arrow" x1="610" y1="386" x2="430" y2="386" marker-end="url(#loop-arrowhead)"></line>
+<foreignObject x="450" y="365" width="140" height="20"><div class="evt-fo"><a class="evt-fo-link" href="#4-recognize">4. Recognize</a></div></foreignObject>
+</g>
+<g class="evt evt-5">
+<line class="evt-arrow" x1="430" y1="460" x2="250" y2="460" marker-end="url(#loop-arrowhead)"></line>
+<foreignObject x="270" y="439" width="140" height="20"><div class="evt-fo"><a class="evt-fo-link" href="#5-call">5. Call</a></div></foreignObject>
+</g>
+<g class="evt evt-6">
+<line class="evt-arrow" x1="250" y1="534" x2="422" y2="534" marker-end="url(#loop-arrowhead)"></line>
+<line class="evt-arrow" x1="438" y1="534" x2="610" y2="534" marker-end="url(#loop-arrowhead)"></line>
+<foreignObject x="266" y="513" width="140" height="20"><div class="evt-fo"><a class="evt-fo-link" href="#6-return">6. Return</a></div></foreignObject>
+<foreignObject x="454" y="513" width="140" height="20"><div class="evt-fo"><a class="evt-fo-link" href="#6-return">6. Return</a></div></foreignObject>
+</g>
+<g class="evt evt-7">
+<line class="evt-arrow" x1="610" y1="608" x2="438" y2="608" marker-end="url(#loop-arrowhead)"></line>
+<line class="evt-arrow" x1="422" y1="608" x2="258" y2="608" marker-end="url(#loop-arrowhead)"></line>
+<line class="evt-arrow" x1="242" y1="608" x2="70" y2="608" marker-end="url(#loop-arrowhead)"></line>
+<foreignObject x="454" y="587" width="140" height="20"><div class="evt-fo"><a class="evt-fo-link" href="#7-end">7. Respond</a></div></foreignObject>
+<foreignObject x="270" y="587" width="140" height="20"><div class="evt-fo"><a class="evt-fo-link" href="#7-end">7. Respond</a></div></foreignObject>
+<foreignObject x="86" y="587" width="140" height="20"><div class="evt-fo"><a class="evt-fo-link" href="#7-end">7. Respond</a></div></foreignObject>
+</g>
+</svg>
+</div>
+</div>
 
 ### 1. Template
 

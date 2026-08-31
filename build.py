@@ -85,6 +85,26 @@ def render_jinja_block(raw_text: str) -> str:
     return highlight(raw_text, lexer, formatter).rstrip("\n")
 
 
+# Raw <svg>...</svg> blocks (e.g. the loop-anim diagram) are pulled out
+# before markdown conversion and spliced back in verbatim as the very last
+# step, after wrap_bug_banners()/make_foldable() have run. Both of those
+# reparse body_html with BeautifulSoup's html.parser, which — unlike a real
+# browser's HTML parser — does not special-case SVG's camelCase attributes
+# (viewBox, markerWidth, refX, ...) and lowercases them, so this is the only
+# way to keep them intact in the emitted HTML.
+SVG_RE = re.compile(r"^<svg\b.*?</svg>[ \t]*$", re.DOTALL | re.MULTILINE)
+
+
+def extract_svg_blocks(md_text: str) -> tuple[str, list[str]]:
+    blocks: list[str] = []
+
+    def replace(match: re.Match) -> str:
+        blocks.append(match.group(0))
+        return f"<!--SVG_BLOCK_{len(blocks) - 1}-->"
+
+    return SVG_RE.sub(replace, md_text), blocks
+
+
 # Any fenced code block, generic (not just ```qwen3```), so math extraction
 # below can skip over code content and leave literal "$" signs in code alone.
 ANY_FENCE_RE = re.compile(r"^```.*?\n.*?^```[ \t]*$", re.DOTALL | re.MULTILINE)
@@ -157,16 +177,25 @@ def wrap_bug_banners(body_html: str) -> str:
 HEADING_TAGS = {"h2", "h3", "h4", "h5", "h6"}
 
 
+def slugify(text: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
+
+
 def make_foldable(body_html: str) -> str:
     """Wrap each heading and the content under it in a <section class="fold">,
     nested by heading level, and give the heading a clickable arrow that
     toggles a "collapsed" class on its section (see the .fold-arrow /
     .fold.collapsed rules in main.css and the toggle script in render_html).
+    Also gives each heading a slugified id (deduped on collision) so other
+    parts of the page — e.g. the loop-anim diagram's arrow labels — can link
+    straight to it with a "#slug" href.
     """
     soup = BeautifulSoup(body_html, "html.parser")
     top_level = list(soup.contents)
     for node in top_level:
         node.extract()
+
+    seen_ids: dict[str, int] = {}
 
     container = soup.new_tag("div")
     stack = [(1, container)]
@@ -176,6 +205,9 @@ def make_foldable(body_html: str) -> str:
             level = int(node.name[1])
             while stack[-1][0] >= level:
                 stack.pop()
+            slug = slugify(node.get_text()) or "section"
+            seen_ids[slug] = seen_ids.get(slug, 0) + 1
+            node["id"] = slug if seen_ids[slug] == 1 else f"{slug}-{seen_ids[slug]}"
             arrow = soup.new_tag(
                 "span",
                 attrs={
@@ -399,6 +431,145 @@ main {
   }
 }
 
+/* End-to-end loop animation (the fib(33) example): a sequence diagram
+   between the User/SDK/Inference Engine/LLM lifelines. The 8 <g
+   class="evt evt-N"> arrow groups (N = 0..7, one per stage) fade in and
+   then STAY, so the diagram progressively builds itself up over one 13s lap
+   — a 1s blank beat with no arrows, then 8 stages at 1.5s each. Unlike a
+   shared-keyframes-plus-delay trick, each evt-N has its OWN @keyframes
+   (evt-reveal-0..7) that reveals it at a fixed point on the SAME 13s
+   timeline and holds it until 100% — since none of them use
+   animation-delay, they all hit that 100%->0% reset at the exact same
+   instant, so every arrow clears together (leaving that blank beat) right
+   before the whole diagram replays from the beginning, instead of each one
+   clearing on its own staggered schedule. */
+.loop-anim {
+  margin: 2rem 0;
+}
+.loop-svg-wrap {
+  overflow-x: auto;
+}
+.loop-svg {
+  display: block;
+  width: 100%;
+  max-width: 680px;
+  min-width: 560px;
+  height: auto;
+  margin: 0 auto;
+}
+.lane-box {
+  fill: none;
+  stroke: var(--border);
+}
+.lane-label {
+  fill: var(--fg);
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 12px;
+}
+.lifeline {
+  stroke: var(--border);
+  stroke-width: 2;
+  stroke-dasharray: 5 5;
+}
+.loop-arrowhead-fill {
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.evt {
+  opacity: 0;
+}
+.evt-0 { animation: evt-reveal-0 13s infinite; }
+.evt-1 { animation: evt-reveal-1 13s infinite; }
+.evt-2 { animation: evt-reveal-2 13s infinite; }
+.evt-3 { animation: evt-reveal-3 13s infinite; }
+.evt-4 { animation: evt-reveal-4 13s infinite; }
+.evt-5 { animation: evt-reveal-5 13s infinite; }
+.evt-6 { animation: evt-reveal-6 13s infinite; }
+.evt-7 { animation: evt-reveal-7 13s infinite; }
+.evt-arrow {
+  stroke: var(--muted);
+  stroke-width: 2.6;
+  stroke-linecap: round;
+}
+/* fill/fill-opacity/text-decoration on SVG elements turned out to render
+   inconsistently across browsers (fine in Safari, an opaque black bar in
+   Firefox, no matter how the color was spelled) — so each arrow label is a
+   real HTML <a> in a <foreignObject> instead of SVG <text>, styled by the
+   exact same a { } rule as the rest of the document (below), which every
+   browser already renders identically and correctly. */
+.evt-fo {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.evt-fo-link {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+@keyframes evt-reveal-0 {
+  0%, 7.6% { opacity: 0; }
+  7.692% { opacity: 1; }
+  99.9% { opacity: 1; }
+  100% { opacity: 0; }
+}
+@keyframes evt-reveal-1 {
+  0%, 19.1% { opacity: 0; }
+  19.231% { opacity: 1; }
+  99.9% { opacity: 1; }
+  100% { opacity: 0; }
+}
+@keyframes evt-reveal-2 {
+  0%, 30.7% { opacity: 0; }
+  30.769% { opacity: 1; }
+  99.9% { opacity: 1; }
+  100% { opacity: 0; }
+}
+@keyframes evt-reveal-3 {
+  0%, 42.2% { opacity: 0; }
+  42.308% { opacity: 1; }
+  99.9% { opacity: 1; }
+  100% { opacity: 0; }
+}
+@keyframes evt-reveal-4 {
+  0%, 53.7% { opacity: 0; }
+  53.846% { opacity: 1; }
+  99.9% { opacity: 1; }
+  100% { opacity: 0; }
+}
+@keyframes evt-reveal-5 {
+  0%, 65.3% { opacity: 0; }
+  65.385% { opacity: 1; }
+  99.9% { opacity: 1; }
+  100% { opacity: 0; }
+}
+@keyframes evt-reveal-6 {
+  0%, 76.8% { opacity: 0; }
+  76.923% { opacity: 1; }
+  99.9% { opacity: 1; }
+  100% { opacity: 0; }
+}
+@keyframes evt-reveal-7 {
+  0%, 88.3% { opacity: 0; }
+  88.462% { opacity: 1; }
+  99.9% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .evt {
+    animation: none !important;
+    opacity: 1;
+  }
+}
+
 /* Reading-progress bar, updated by the scroll listener in render_html(). */
 #scroller {
   height: 0.4rem;
@@ -608,6 +779,7 @@ def main() -> None:
     # drop a leading top-level heading to avoid showing it twice.
     body = re.sub(r"^#[ \t]+.*\n+", "", body, count=1)
 
+    body, svg_blocks = extract_svg_blocks(body)
     body, qwen3_blocks = extract_qwen3_blocks(body)
     body, jinja_blocks = extract_jinja_blocks(body)
     body, math_blocks = extract_math_blocks(body)
@@ -644,6 +816,9 @@ def main() -> None:
 
     body_html = wrap_bug_banners(body_html)
     body_html = make_foldable(body_html)
+
+    for i, raw in enumerate(svg_blocks):
+        body_html = body_html.replace(f"<!--SVG_BLOCK_{i}-->", raw)
 
     DOCS.mkdir(exist_ok=True)
     (DOCS / "index.html").write_text(render_html(meta, body_html), encoding="utf-8")

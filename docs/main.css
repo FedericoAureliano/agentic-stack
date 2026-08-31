@@ -105,6 +105,145 @@ main {
   }
 }
 
+/* End-to-end loop animation (the fib(33) example): a sequence diagram
+   between the User/SDK/Inference Engine/LLM lifelines. The 8 <g
+   class="evt evt-N"> arrow groups (N = 0..7, one per stage) fade in and
+   then STAY, so the diagram progressively builds itself up over one 13s lap
+   — a 1s blank beat with no arrows, then 8 stages at 1.5s each. Unlike a
+   shared-keyframes-plus-delay trick, each evt-N has its OWN @keyframes
+   (evt-reveal-0..7) that reveals it at a fixed point on the SAME 13s
+   timeline and holds it until 100% — since none of them use
+   animation-delay, they all hit that 100%->0% reset at the exact same
+   instant, so every arrow clears together (leaving that blank beat) right
+   before the whole diagram replays from the beginning, instead of each one
+   clearing on its own staggered schedule. */
+.loop-anim {
+  margin: 2rem 0;
+}
+.loop-svg-wrap {
+  overflow-x: auto;
+}
+.loop-svg {
+  display: block;
+  width: 100%;
+  max-width: 680px;
+  min-width: 560px;
+  height: auto;
+  margin: 0 auto;
+}
+.lane-box {
+  fill: none;
+  stroke: var(--border);
+}
+.lane-label {
+  fill: var(--fg);
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 12px;
+}
+.lifeline {
+  stroke: var(--border);
+  stroke-width: 2;
+  stroke-dasharray: 5 5;
+}
+.loop-arrowhead-fill {
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.evt {
+  opacity: 0;
+}
+.evt-0 { animation: evt-reveal-0 13s infinite; }
+.evt-1 { animation: evt-reveal-1 13s infinite; }
+.evt-2 { animation: evt-reveal-2 13s infinite; }
+.evt-3 { animation: evt-reveal-3 13s infinite; }
+.evt-4 { animation: evt-reveal-4 13s infinite; }
+.evt-5 { animation: evt-reveal-5 13s infinite; }
+.evt-6 { animation: evt-reveal-6 13s infinite; }
+.evt-7 { animation: evt-reveal-7 13s infinite; }
+.evt-arrow {
+  stroke: var(--muted);
+  stroke-width: 2.6;
+  stroke-linecap: round;
+}
+/* fill/fill-opacity/text-decoration on SVG elements turned out to render
+   inconsistently across browsers (fine in Safari, an opaque black bar in
+   Firefox, no matter how the color was spelled) — so each arrow label is a
+   real HTML <a> in a <foreignObject> instead of SVG <text>, styled by the
+   exact same a { } rule as the rest of the document (below), which every
+   browser already renders identically and correctly. */
+.evt-fo {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.evt-fo-link {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+@keyframes evt-reveal-0 {
+  0%, 7.6% { opacity: 0; }
+  7.692% { opacity: 1; }
+  99.9% { opacity: 1; }
+  100% { opacity: 0; }
+}
+@keyframes evt-reveal-1 {
+  0%, 19.1% { opacity: 0; }
+  19.231% { opacity: 1; }
+  99.9% { opacity: 1; }
+  100% { opacity: 0; }
+}
+@keyframes evt-reveal-2 {
+  0%, 30.7% { opacity: 0; }
+  30.769% { opacity: 1; }
+  99.9% { opacity: 1; }
+  100% { opacity: 0; }
+}
+@keyframes evt-reveal-3 {
+  0%, 42.2% { opacity: 0; }
+  42.308% { opacity: 1; }
+  99.9% { opacity: 1; }
+  100% { opacity: 0; }
+}
+@keyframes evt-reveal-4 {
+  0%, 53.7% { opacity: 0; }
+  53.846% { opacity: 1; }
+  99.9% { opacity: 1; }
+  100% { opacity: 0; }
+}
+@keyframes evt-reveal-5 {
+  0%, 65.3% { opacity: 0; }
+  65.385% { opacity: 1; }
+  99.9% { opacity: 1; }
+  100% { opacity: 0; }
+}
+@keyframes evt-reveal-6 {
+  0%, 76.8% { opacity: 0; }
+  76.923% { opacity: 1; }
+  99.9% { opacity: 1; }
+  100% { opacity: 0; }
+}
+@keyframes evt-reveal-7 {
+  0%, 88.3% { opacity: 0; }
+  88.462% { opacity: 1; }
+  99.9% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .evt {
+    animation: none !important;
+    opacity: 1;
+  }
+}
+
 /* Reading-progress bar, updated by the scroll listener in render_html(). */
 #scroller {
   height: 0.4rem;

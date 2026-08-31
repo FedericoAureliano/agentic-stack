@@ -26,7 +26,7 @@ What can go wrong and what can we do about it?</p>
 FMxAI</a> at the University of
 Waterloo. This blog post is an informal companion to the first three modules of
 the course.</p>
-<section class="fold"><h2><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;</span>User Interface</h2>
+<section class="fold"><h2 id="user-interface"><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;</span>User Interface</h2>
 <p>Agentic SDKs let you define agents in just a few lines of code. For example,
 the code below defines a simple agent called <code>fib_agent</code> that has access to one
 tool, <code>fib</code>, which takes in an integer <code>n</code> and returns the <code>n</code>-th number in the
@@ -46,7 +46,7 @@ the 33rd Fibonacci number—and it gets the answer right!</p>
 <span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="n">answer</span><span class="p">)</span>
 <span class="go">The thirty-third Fibonacci number is 3524578</span>
 </code></pre></div>
-</section><section class="fold"><h2><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;</span>The Mechanics</h2>
+</section><section class="fold"><h2 id="the-mechanics"><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;</span>The Mechanics</h2>
 <p>But what in the world just happened? Did the agent use the tool? If so, how?
 How did it know that the tool exists? How did it call it? How did it get the
 result? What do language models have to do with any of this? What is happening?</p>
@@ -62,8 +62,74 @@ result? What do language models have to do with any of this? What is happening?<
 </ol>
 <p>This is known as the agentic loop. Some of the steps are language model
 specific. To make things as concrete as possible, we will walk through the toy
-example using Qwen3.</p>
-<section class="fold"><h3><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;</span>1. Template</h3>
+example using Qwen3. Here is that whole loop animated end-to-end, as a sequence
+diagram between the user, the SDK, the inference engine, and the LLM. The
+sections below walk through each step in detail.</p>
+<div class="loop-anim">
+<div class="loop-svg-wrap">
+<svg class="loop-svg" viewBox="0 0 680 660" role="img" aria-label="Sequence diagram: the user writes the agentic program (Program), the SDK hands the fib tool definition and the question to the inference engine (Template), the inference engine sends the prompt to the LLM (Tokenize), the LLM and the inference engine loop as it samples tokens from it (Generate), the LLM's output reaches the inference engine which recognizes and parses it (Recognize), the inference engine calls the SDK's fib(33) (Call), the SDK returns 3524578 to the inference engine which forwards it to the LLM (Return), and the LLM's final answer travels from the LLM to the inference engine, to the SDK, and to the user (Respond). The loop then clears and repeats from the beginning.">
+<defs>
+<marker id="loop-arrowhead" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+<path class="loop-arrowhead-fill" d="M1,1 L8,5 L1,9"></path>
+</marker>
+</defs>
+<line class="lifeline" x1="70" y1="48" x2="70" y2="634"></line>
+<line class="lifeline" x1="250" y1="48" x2="250" y2="634"></line>
+<line class="lifeline" x1="430" y1="48" x2="430" y2="634"></line>
+<line class="lifeline" x1="610" y1="48" x2="610" y2="634"></line>
+<g class="lane-header">
+<rect class="lane-box" x="10" y="8" width="120" height="40" rx="8"></rect>
+<text class="lane-label" x="70" y="33" text-anchor="middle">User</text>
+<rect class="lane-box" x="190" y="8" width="120" height="40" rx="8"></rect>
+<text class="lane-label" x="250" y="33" text-anchor="middle">SDK</text>
+<rect class="lane-box" x="350" y="8" width="160" height="40" rx="8"></rect>
+<text class="lane-label" x="430" y="33" text-anchor="middle">Inference Engine</text>
+<rect class="lane-box" x="550" y="8" width="120" height="40" rx="8"></rect>
+<text class="lane-label" x="610" y="33" text-anchor="middle">LLM</text>
+</g>
+<g class="evt evt-0">
+<line class="evt-arrow" x1="70" y1="90" x2="250" y2="90" marker-end="url(#loop-arrowhead)"></line>
+<foreignObject x="90" y="69" width="140" height="20"><div class="evt-fo"><a class="evt-fo-link" href="#user-interface">0. Program</a></div></foreignObject>
+</g>
+<g class="evt evt-1">
+<line class="evt-arrow" x1="250" y1="164" x2="430" y2="164" marker-end="url(#loop-arrowhead)"></line>
+<foreignObject x="270" y="143" width="140" height="20"><div class="evt-fo"><a class="evt-fo-link" href="#1-template">1. Template</a></div></foreignObject>
+</g>
+<g class="evt evt-2">
+<line class="evt-arrow" x1="430" y1="238" x2="610" y2="238" marker-end="url(#loop-arrowhead)"></line>
+<foreignObject x="450" y="217" width="140" height="20"><div class="evt-fo"><a class="evt-fo-link" href="#2-tokens">2. Tokenize</a></div></foreignObject>
+</g>
+<g class="evt evt-3">
+<foreignObject x="450" y="283" width="140" height="20"><div class="evt-fo"><a class="evt-fo-link" href="#3-generate">3. Generate</a></div></foreignObject>
+<line class="evt-arrow" x1="610" y1="304" x2="430" y2="304" marker-end="url(#loop-arrowhead)"></line>
+<line class="evt-arrow" x1="430" y1="320" x2="610" y2="320" marker-end="url(#loop-arrowhead)"></line>
+</g>
+<g class="evt evt-4">
+<line class="evt-arrow" x1="610" y1="386" x2="430" y2="386" marker-end="url(#loop-arrowhead)"></line>
+<foreignObject x="450" y="365" width="140" height="20"><div class="evt-fo"><a class="evt-fo-link" href="#4-recognize">4. Recognize</a></div></foreignObject>
+</g>
+<g class="evt evt-5">
+<line class="evt-arrow" x1="430" y1="460" x2="250" y2="460" marker-end="url(#loop-arrowhead)"></line>
+<foreignObject x="270" y="439" width="140" height="20"><div class="evt-fo"><a class="evt-fo-link" href="#5-call">5. Call</a></div></foreignObject>
+</g>
+<g class="evt evt-6">
+<line class="evt-arrow" x1="250" y1="534" x2="422" y2="534" marker-end="url(#loop-arrowhead)"></line>
+<line class="evt-arrow" x1="438" y1="534" x2="610" y2="534" marker-end="url(#loop-arrowhead)"></line>
+<foreignObject x="266" y="513" width="140" height="20"><div class="evt-fo"><a class="evt-fo-link" href="#6-return">6. Return</a></div></foreignObject>
+<foreignObject x="454" y="513" width="140" height="20"><div class="evt-fo"><a class="evt-fo-link" href="#6-return">6. Return</a></div></foreignObject>
+</g>
+<g class="evt evt-7">
+<line class="evt-arrow" x1="610" y1="608" x2="438" y2="608" marker-end="url(#loop-arrowhead)"></line>
+<line class="evt-arrow" x1="422" y1="608" x2="258" y2="608" marker-end="url(#loop-arrowhead)"></line>
+<line class="evt-arrow" x1="242" y1="608" x2="70" y2="608" marker-end="url(#loop-arrowhead)"></line>
+<foreignObject x="454" y="587" width="140" height="20"><div class="evt-fo"><a class="evt-fo-link" href="#7-end">7. Respond</a></div></foreignObject>
+<foreignObject x="270" y="587" width="140" height="20"><div class="evt-fo"><a class="evt-fo-link" href="#7-end">7. Respond</a></div></foreignObject>
+<foreignObject x="86" y="587" width="140" height="20"><div class="evt-fo"><a class="evt-fo-link" href="#7-end">7. Respond</a></div></foreignObject>
+</g>
+</svg>
+</div>
+</div>
+<section class="fold"><h3 id="1-template"><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;</span>1. Template</h3>
 <p>The first thing we need to do is convert our agentic program into a textual
 prompt. This is usually done with what is called a <em>chat template</em>. The code
 below is one example of such a template: it is a simplified snippet—with
@@ -191,7 +257,7 @@ signature and docstring, without the code body, along with instructions on how
 to call functions, generally (wrap the call in <code>&lt;tool_call&gt;</code> and
 <code>&lt;function=example_function_name&gt;</code> tags, with the argument in its own
 <code>&lt;parameter=example_parameter_1&gt;</code> tag).</p>
-</section><section class="fold"><h3><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;</span>2. Tokens</h3>
+</section><section class="fold"><h3 id="2-tokens"><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;</span>2. Tokens</h3>
 <p>Language models do not operate on text, though. They operate on tokens. And
 generating tokens is slightly more involved than you might expect.</p>
 <p>At a high level, you can think of tokens as the language model's atomic units
@@ -237,7 +303,7 @@ the target language model will understand.</p>
 <span class="n">tokenizer</span> <span class="o">=</span> <span class="n">AutoTokenizer</span><span class="o">.</span><span class="n">from_pretrained</span><span class="p">(</span><span class="s2">"Qwen/Qwen3-32B"</span><span class="p">)</span>
 <span class="n">input_tokens</span> <span class="o">=</span> <span class="n">tokenizer</span><span class="p">(</span><span class="n">jinja_generated_prompt</span><span class="p">)</span>
 </code></pre></div>
-</section><section class="fold"><h3><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;</span>3. Generate</h3>
+</section><section class="fold"><h3 id="3-generate"><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;</span>3. Generate</h3>
 <p>Given a sequence of tokens, language models, like Qwen3, define a probability
 distribution over the set of all tokens. This probability distribution
 represents the likelihood that a given token will appear next in the sequence,
@@ -275,7 +341,7 @@ sequences that do not adhere to the required format. For example,
 <a href="https://huggingface.co/froggeric/Qwen3.5-35B-A3B-Uncensored-FernflowerAI-MLX-8bit/blob/main/chat_template.jinja#L116">here</a>
 is a jinja template that processes assistant messages to make sure that
 <code>&lt;think&gt;</code> blocks are closed with <code>&lt;/think&gt;</code> before tool call blocks.</p></div>
-</section><section class="fold"><h3><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;</span>4. Recognize</h3>
+</section><section class="fold"><h3 id="4-recognize"><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;</span>4. Recognize</h3>
 <p>Once we have generated a sequence of tokens <code>&lt;|im_start|&gt;assistant ...
 &lt;|im_end|&gt;</code>, we have to process it. The tokens inside of thinking blocks will
 be handled differently than the tokens inside of tool call blocks, which will
@@ -312,7 +378,7 @@ recognize the citation, the text flowed through to me, the user, directly. You
 can find another similar example in the vLLM project, where <a href="https://github.com/vllm-project/vllm/issues/39056">a failure in the
 parser resulted in silently dropping tool
 calls</a>.</p></div>
-</section><section class="fold"><h3><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;</span>5. Call</h3>
+</section><section class="fold"><h3 id="5-call"><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;</span>5. Call</h3>
 <p>Once we have the response in JSON format, we can process it and actually make
 the tool calls that the language model requested. The language model cannot do
 anything directly. The agent harness, the inference runtime, and the serving
@@ -328,7 +394,7 @@ results are in a variable called <code>response</code>.</p>
     <span class="n">tool_fn</span> <span class="o">=</span> <span class="n">fib_agent</span><span class="o">.</span><span class="n">tools</span><span class="p">[</span><span class="n">name</span><span class="p">]</span>
     <span class="n">results</span><span class="p">[</span><span class="n">tool_call</span><span class="p">[</span><span class="s2">"id"</span><span class="p">]]</span> <span class="o">=</span> <span class="n">tool_fn</span><span class="p">(</span><span class="o">**</span><span class="n">args</span><span class="p">)</span>
 </code></pre></div>
-</section><section class="fold"><h3><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;</span>6. Return</h3>
+</section><section class="fold"><h3 id="6-return"><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;</span>6. Return</h3>
 <p>For Qwen3, "tool results are treated as special user messages." Models like GLM
 use an actual <code>&lt;|observation|&gt;</code> role for this instead. Either way, the chat
 template handles the encoding so that we don't have to worry about the details.
@@ -341,7 +407,7 @@ as the following text (appropriately tokenized by the tokenizer, as before).</p>
 </span><span class="tk tk-im">&lt;|im_end|&gt;</span></code></pre>
 <p>At this point, we return to step 3 to generate more tokens using the underlying
 language model.</p>
-</section><section class="fold"><h3><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;</span>7. End</h3>
+</section><section class="fold"><h3 id="7-end"><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;</span>7. End</h3>
 <p>Eventually, we will generate a sequence of tokens that has no tool calls, like
 the following.</p>
 <pre class="codehilite qwen3-tokens"><code><span class="tk tk-im">&lt;|im_start|&gt;</span><span class="tk">assistant</span><span class="tk">
@@ -368,12 +434,12 @@ JSON message as the final response.</p>
 <span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="n">answer</span><span class="p">)</span>
 <span class="go">The thirty-third Fibonacci number is 3524578</span>
 </code></pre></div>
-</section></section><section class="fold"><h2><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;</span>Concerns and Interventions</h2>
+</section></section><section class="fold"><h2 id="concerns-and-interventions"><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;</span>Concerns and Interventions</h2>
 <p>A million things can and do go wrong during this process. In the text above, I
 noted three example bugs. One related to tokenizing, one related to instruction
 following formats, and one related to parsing. In this section, I will quickly
 go over a few more pressing concerns and possible ways to deal with them.</p>
-<section class="fold"><h3><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;</span>Token Cost and Context Window Size</h3>
+<section class="fold"><h3 id="token-cost-and-context-window-size"><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;</span>Token Cost and Context Window Size</h3>
 <p>Claude Fable 5 tokens cost $10 / MTok for inputs and $50 / MTok for outputs.
 Each digit is one token so if I ask this agent for the 10,367,321st Fibonacci
 number, for example, the answer, which has 2,166,642 digits, would cost me
@@ -398,7 +464,7 @@ argument. That would probably work most of the time.</p>
 generally. For example, we could add a code hook that intercepts all messages to
 the language model and, if they are too big, redirects them to a file or just
 outright replaces them with a warning message.</p>
-</section><section class="fold"><h3><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;</span>Tool Interface Errors</h3>
+</section><section class="fold"><h3 id="tool-interface-errors"><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;</span>Tool Interface Errors</h3>
 <p>The one argument to our <code>fib</code> function is very simple: it is just an integer
 number. But many other tools have much more complicated types. For example, in
 <a href="https://arxiv.org/pdf/2608.05493">one of our recent papers</a>, we found that 23%
@@ -409,13 +475,13 @@ might just struggle to use them correctly.</p>
 <p>There is a growing body of work that addresses these issues with prompting,
 constrained decoding, and other kinds of techniques. We will survey this area
 on Sep 29 in the <a href="https://federico.morarocha.ca/CS846-FMxAI/">FMxAI course</a>.</p>
-</section><section class="fold"><h3><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;</span>Concurrent Tool Calls</h3>
+</section><section class="fold"><h3 id="concurrent-tool-calls"><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;</span>Concurrent Tool Calls</h3>
 <p>Imagine that we ask for two <code>fib</code> tool calls, we execute them in parallel, and
 the results come back out of order. Will we give the user the right response?
 Or what if these tools have side-effects and interfere with each other? Tool
 calling can lead to many concurrency bugs which agent harnesses and SDKs must
 deal with, but very few do.</p>
-</section><section class="fold"><h3><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;</span>Hacking the Harness (From Within)</h3>
+</section><section class="fold"><h3 id="hacking-the-harness-from-within"><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;</span>Hacking the Harness (From Within)</h3>
 <p>The famous <a href="https://metr.org/blog/2026-08-26-openai-hugging-face-incident-investigation/">METR
 report</a>
 disclosed that, during OpenAI's Hugging Face incident, "Agents successfully
