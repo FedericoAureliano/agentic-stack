@@ -414,10 +414,10 @@ calls](https://github.com/vllm-project/vllm/issues/39056).
 
 Once we have the response in JSON format, we can process it and actually make
 the tool calls that the language model requested. The language model cannot do
-anything directly. The agent harness, the inference runtime, and the serving
-engine are its arms, feet, and heart. The following code shows how we could
-implement the tool calls themselves in an agentic harness, assuming the parsing
-results are in a variable called `response`.
+anything directly. The agent SDK, the inference runtime, and the serving engine
+are its arms, feet, and heart. The following code shows how we could implement
+the tool calls themselves in the SDK, assuming the parsing results are in a
+variable called `response`.
 
 ```python
 import json
@@ -432,11 +432,11 @@ for tool_call in response["tool_calls"]:
 
 ### 6. Return
 
-For Qwen3, "tool results are treated as special user messages." Models like GLM
-use an actual `<|observation|>` role for this instead. Either way, the chat
-template handles the encoding so that we don't have to worry about the details.
-For Qwen3, the result of our tool call can be sent back to the language model
-as the following text (appropriately tokenized by the tokenizer, as before).
+For Qwen3, tool results are special user messages. Models like GLM use an
+actual `<|observation|>` role for this instead. Either way, the chat template
+handles the encoding so that we don't have to worry about the details. For
+Qwen3, the result of our tool call can be sent back to the language model as
+the following text (appropriately tokenized by the tokenizer, as before).
 
 ```qwen3
 <|im_start|>user
@@ -498,8 +498,8 @@ go over a few more pressing concerns and possible ways to deal with them.
 
 Claude Fable 5 tokens cost $10 / MTok for inputs and $50 / MTok for outputs.
 Each digit is one token so if I ask this agent for the 10,367,321st Fibonacci
-number, for example, the answer, which has 2,166,642 digits, would cost me
-$130, if it could fit in the context window. Claude Fable 5 has a 1M token
+number, for example, the answer, which has 2,166,642 digits, would cost me more
+than $100, if it could fit in the context window. Claude Fable 5 has a 1M token
 context window, so this wouldn't work anyway.
 
 Fibonacci is a silly example, but there are plenty of realistic tools that have
@@ -522,9 +522,9 @@ def fib(n: int) -> int:
     return fib(n - 1) + fib(n - 2)
 ```
 
-We could also instrument the harness or inference engine to avoid such cases,
-generally. For example, we could add a code hook that intercepts all messages to
-the language model and, if they are too big, redirects them to a file or just
+We could also instrument the inference engine to avoid such cases, generally.
+For example, we could add a code hook that intercepts all messages to the
+language model and, if they are too big, redirects them to a file or just
 outright replaces them with a warning message.
 
 ### Tool Interface Errors
@@ -546,8 +546,8 @@ on Sep 29 in the [FMxAI course](https://federico.morarocha.ca/CS846-FMxAI/).
 Imagine that we ask for two `fib` tool calls, we execute them in parallel, and
 the results come back out of order. Will we give the user the right response?
 Or what if these tools have side-effects and interfere with each other? Tool
-calling can lead to many concurrency bugs which agent harnesses and SDKs must
-deal with, but very few do.
+calling can lead to many concurrency bugs which agent SDKs must deal with, but
+very few do.
 
 ### Hacking the Harness (From Within)
 
@@ -557,8 +557,8 @@ disclosed that, during OpenAI's Hugging Face incident, "Agents successfully
 prototyped techniques to 'spoof' tool calls by substituting a different command
 for the command they appeared to run." Can a malicious language model spoof
 tool calls in our setup? Or worse, can a language model generate a sequence of
-tokens that will make the harness run arbitrary code? That might sound crazy,
-but here is a [pull request in the vLLM
+tokens that will make the SDK run arbitrary code? That might sound crazy, but
+here is a [pull request in the vLLM
 project](https://github.com/vllm-project/vllm/pull/21396#discussion_r2223397938)
 that attempted to add a direct Python `eval` call in the parser for tool call
 parameters.
