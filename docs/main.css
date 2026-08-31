@@ -185,6 +185,12 @@ pre code {
   padding: 0;
 }
 
+/* The jinja snippet is long and annotated, so it gets a smaller font than
+   other code blocks (see render_jinja_block / JINJA_FENCE_RE in build.py). */
+.jinja-code {
+  font-size: 8pt;
+}
+
 blockquote {
   margin: 1rem 0;
   padding: 4px 1rem;

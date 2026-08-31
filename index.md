@@ -55,7 +55,7 @@ Roughly, under-the-hood, we are
 4. _recognizing_ tool calls in the tokens;
 5. _calling_ those tools;
 6. _returning_ the result of the tool call as more tokens; and
-7. repeating from step 3 until we generate a special _end_ token.
+7. repeating from step 3 until we reach a stopping condition.
 
 Some of these steps are language model specific. To make things as concrete as
 possible, we will walk through the toy example using Qwen3.
@@ -64,36 +64,73 @@ possible, we will walk through the toy example using Qwen3.
 
 The first thing we need to do is convert our agentic program into a textual
 prompt. This is usually done with what is called a _chat template_. The code
-below is one example of such a template: it is snippet of a [Jinja file
-provided by the authors of
-Qwen3]((https://github.com/QwenLM/Qwen3/blob/7a2f61ffc7a20d47efcd2bf97f6f2bf52729042e/docs/source/assets/qwen3_nonthinking.jinja)).
+below is one example of such a template: it is a simplified snippet---with
+added comments---of the [chat template for
+Qwen3-Coder-30B-A3B-Instruct](https://huggingface.co/Qwen/Qwen3-Coder-30B-A3B-Instruct/blob/main/chat_template.jinja).
 You can think of this as a program that takes in tool defintions (like `fib`)
 and messages (like "What is the thirty-third Fibonacci number?") and generates
 text in the format that the language model expects to work on.
 
 
 ```jinja
-{%- if tools %}
-    {{- '<|im_start|>system\n' }}
-    {%- if messages[0].role == 'system' %}
-        {{- messages[0].content + '\n\n' }}
-    {%- endif %}
-    {{- "# Tools\n\nYou may call one or more functions to assist with the user query.\n\nYou are provided with function signatures within <tools></tools> XML tags:\n<tools>" }}
-    {%- for tool in tools %}
-        {{- "\n" }}
-        {{- tool | tojson }}
-    {%- endfor %}
-    {{- "\n</tools>\n\nFor each function call, return a json object with function name and arguments within <tool_call></tool_call> XML tags:\n<tool_call>\n{\"name\": <function-name>, \"arguments\": <args-json-object>}\n</tool_call><|im_end|>\n" }}
+{# Emit the system message: pass the caller's through, or synthesize a
+   default one when tools were provided but no system message was given #}
+{%- if system_message is defined %}
+    {{- "<|im_start|>system\n" + system_message }}
 {%- else %}
-...
-{%- for message in messages %}
-    {%- if message.content is string %}
-        {%- set content = message.content %}
-    {%- else %}
-        {%- set content = '' %}
+    {%- if tools is iterable and tools | length > 0 %}
+        {{- "<|im_start|>system\nYou are Qwen, a helpful AI assistant that can interact with a computer to solve tasks." }}
     {%- endif %}
-    {%- if (message.role == "user") or (message.role == "system" and not loop.first) %}
-        {{- '<|im_start|>' + message.role + '\n' + content + '<|im_end|>' + '\n' }}
+{%- endif %}
+
+{# List every tool as an XML <function> block inside <tools>...</tools> #}
+{%- if tools is iterable and tools | length > 0 %}
+    {{- "\n\n# Tools\n\nYou have access to the following functions:\n\n" }}
+    {{- "<tools>" }}
+    {%- for tool in tools %}
+        {%- if tool.function is defined %}
+            {%- set tool = tool.function %}
+        {%- endif %}
+        {{- "\n<function>\n<name>" ~ tool.name ~ "</name>" }}
+        {%- if tool.description is defined %}
+            {{- '\n<description>' ~ (tool.description | trim) ~ '</description>' }}
+        {%- endif %}
+        {{- '\n<parameters>' }}
+        ...
+        {{- '\n</parameters>' }}
+        {{- '\n</function>' }}
+    {%- endfor %}
+    {{- "\n</tools>" }}
+
+    {# Tell the model exactly how a tool call must be formatted #}
+    {{- '\n\nIf you choose to call a function ONLY reply in the following format with NO suffix:\n\n<tool_call>\n<function=example_function_name>\n<parameter=example_parameter_1>\nvalue_1\n</parameter>\n...\n</function>\n</tool_call>\n\n...' }}
+{%- endif %}
+...
+
+{# Walk the conversation, emitting one <|im_start|>...<|im_end|> block per message #}
+{%- for message in loop_messages %}
+    {# An assistant message with tool calls becomes one <tool_call> per call,
+       nesting the function name and arguments as <function=NAME><parameter=NAME> #}
+    {%- if message.role == "assistant" and message.tool_calls is defined and message.tool_calls is iterable and message.tool_calls | length > 0 %}
+        {{- '<|im_start|>' + message.role }}
+        ...
+        {%- for tool_call in message.tool_calls %}
+            {%- if tool_call.function is defined %}
+                {%- set tool_call = tool_call.function %}
+            {%- endif %}
+            {{- '\n<tool_call>\n<function=' + tool_call.name + '>\n' }}
+            {%- for args_name, args_value in tool_call.arguments|items %}
+                {{- '<parameter=' + args_name + '>\n' }}
+                ...
+                {{- '\n</parameter>\n' }}
+            {%- endfor %}
+            {{- '</function>\n</tool_call>' }}
+        {%- endfor %}
+        {{- '<|im_end|>\n' }}
+
+    {# Otherwise, pass the message through as-is #}
+    {%- elif message.role == "user" or message.role == "system" or message.role == "assistant" %}
+        {{- '<|im_start|>' + message.role + '\n' + message.content + '<|im_end|>' + '\n' }}
     ...
 {%- endfor %}
 ...
@@ -104,30 +141,48 @@ prompt.
 
 ```qwen3
 <|im_start|>system
+You are Qwen, a helpful AI assistant that can interact with a computer to solve tasks.
+
 # Tools
 
-You may call one or more functions to assist with the user query.
+You have access to the following functions:
 
-You are provided with function signatures within <tools></tools> XML tags:
 <tools>
-{
-  "type"    : "function", 
-  "function": {
-    "name"       : "fib", 
-    "description": "Return the nth Fibonacci number", 
-    "parameters" : {
-      "type"      : "object",
-      "properties": {"n": {"type": "integer"}}, 
-      "required"  : ["n"]
-    }
-  }
-}
+<function>
+<name>fib</name>
+<description>Return the nth Fibonacci number</description>
+<parameters>
+<parameter>
+<name>n</name>
+<type>integer</type>
+</parameter>
+<required>["n"]</required>
+</parameters>
+</function>
 </tools>
 
-For each function call, return a json object with function name and arguments within <tool_call></tool_call> XML tags:
+If you choose to call a function ONLY reply in the following format with NO suffix:
+
 <tool_call>
-{"name": <function-name>, "arguments": <args-json-object>}
+<function=example_function_name>
+<parameter=example_parameter_1>
+value_1
+</parameter>
+<parameter=example_parameter_2>
+This is the value for the second parameter
+that can span
+multiple lines
+</parameter>
+</function>
 </tool_call>
+
+<IMPORTANT>
+Reminder:
+- Function calls MUST follow the specified format: an inner <function=...></function> block must be nested within <tool_call></tool_call> XML tags
+- Required parameters MUST be specified
+- You may provide optional reasoning for your function call in natural language BEFORE the function call, but NOT after
+- If there is no function call available, answer the question like normal with your current knowledge and do not tell the user about function calls
+</IMPORTANT>
 <|im_end|>
 
 <|im_start|>user
@@ -139,8 +194,9 @@ You will notice two important things. First, `<|im_start|>` and `<|im_end|>`
 mark individual "input messages" and they are tagged with a role ("system" and
 "user", in this case). Second, the "system" role gives the `fib` function
 signature and docstring, without the code body, along with instructions on how
-to call functions, generally (generate a json object following a specific
-schema wrapped in specific XML tags).
+to call functions, generally (wrap the call in `<tool_call>` and
+`<function=example_function_name>` tags, with the argument in its own
+`<parameter=example_parameter_1>` tag).
 
 ### 2. Tokens
 
@@ -178,9 +234,11 @@ the target language model will understand.
 from transformers import AutoTokenizer
 
 jinja_generated_prompt = """<|im_start|>system
+You are Qwen, a helpful AI assistant that can interact with a computer to solve tasks.
+
 # Tools
 
-You may call one or more functions to assist with the user query.
+You have access to the following functions:
 
 ...
 
@@ -214,7 +272,11 @@ the following.
 The user wants the 33rd Fibonacci number. Rather than compute it by hand, I'll call the fib function with n=33.
 </think>
 <tool_call>
-{"name": "fib", "arguments": {"n": 33}}
+<function=fib>
+<parameter=n>
+33
+</parameter>
+</function>
 </tool_call>
 <|im_end|>
 ```
@@ -223,8 +285,9 @@ There are three very important things happening in this text block. First, the
 text begins with `<|im_start|>assistant` and ends with a matching `<|im_end|>`.
 Second, there is an XML block starting with `<think>` and ending with a
 matching `</think>`. Third, there is an XML block starting with `<tool_call>`,
-ending with a matching `<tool_call>`, and containing a json object
-corresponding to a tool call, as defined in the prompt preamble from before.
+ending with a matching `</tool_call>`, and containing a nested
+`<function=fib>` block whose `<parameter=n>` tag carries the argument, as
+defined in the prompt preamble from before.
 
 [Nathan Lambert's Textbook](https://rlhfbook.com/) describes how language
 models are trained to follow these formats. But none of this is guaranteed by
@@ -247,8 +310,26 @@ Inference engines, like [vLLM](https://github.com/vllm-project/vllm), include
 parsers for every language model that they support. For example, here is the
 [parser for
 Qwen3](https://github.com/vllm-project/vllm/blob/main/vllm/parser/qwen3.py),
-which transorms the output of the generation step into a json object.
+which transorms the output of the generation step into a JSON object. This is
+what we mean by "recognize" the tool calls: find them and package them up for
+the next step.
 
+```json
+TODO: ADD PARSED VERION OF 
+
+<|im_start|>assistant
+<think>
+The user wants the 33rd Fibonacci number. Rather than compute it by hand, I'll call the fib function with n=33.
+</think>
+<tool_call>
+<function=fib>
+<parameter=n>
+33
+</parameter>
+</function>
+</tool_call>
+<|im_end|>
+```
 
 If the language model uses slightly different format, the parser can fail and
 you can run into trouble. For example, today, Claude gave me output like this
@@ -259,6 +340,8 @@ angle bracket, `<`, instead of an opening round bracket, `(`, before the word
 through to me, the user, directly.
 
 ### 5. Call
+
+
 
 ```python
 tool_fn = fib_agent.tools["fib"]

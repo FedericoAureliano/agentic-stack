@@ -19,6 +19,9 @@ from pathlib import Path
 
 import markdown
 from bs4 import BeautifulSoup, Tag
+from pygments import highlight
+from pygments.formatters import HtmlFormatter
+from pygments.lexers import get_lexer_by_name
 from tokenizers import Tokenizer
 
 ROOT = Path(__file__).parent
@@ -33,6 +36,13 @@ QWEN3_TOKENIZER = "Qwen/Qwen3-0.6B"
 # python-markdown passes through untouched), then rendered separately as a
 # tokenizer visualization and spliced back in afterward.
 QWEN3_FENCE_RE = re.compile(r"^```qwen3\n(.*?)\n```[ \t]*$", re.DOTALL | re.MULTILINE)
+
+# Fenced blocks tagged ```jinja``` get the same pull-out/placeholder treatment
+# as ```qwen3``` blocks above, but only so the resulting <pre> can carry an
+# extra "jinja-code" class (see .jinja-code in main.css) for a smaller font
+# size — the jinja snippet runs long and reads better a notch smaller than
+# the other code blocks on the page.
+JINJA_FENCE_RE = re.compile(r"^```jinja\n(.*?)\n```[ \t]*$", re.DOTALL | re.MULTILINE)
 
 def parse_frontmatter(text: str) -> tuple[dict[str, str], str]:
     if not text.startswith("---\n"):
@@ -57,6 +67,22 @@ def extract_qwen3_blocks(md_text: str) -> tuple[str, list[str]]:
         return f"<!--QWEN3_BLOCK_{len(blocks) - 1}-->"
 
     return QWEN3_FENCE_RE.sub(replace, md_text), blocks
+
+
+def extract_jinja_blocks(md_text: str) -> tuple[str, list[str]]:
+    blocks: list[str] = []
+
+    def replace(match: re.Match) -> str:
+        blocks.append(match.group(1))
+        return f"<!--JINJA_BLOCK_{len(blocks) - 1}-->"
+
+    return JINJA_FENCE_RE.sub(replace, md_text), blocks
+
+
+def render_jinja_block(raw_text: str) -> str:
+    lexer = get_lexer_by_name("jinja")
+    formatter = HtmlFormatter(cssclass="codehilite jinja-code", wrapcode=True)
+    return highlight(raw_text, lexer, formatter).rstrip("\n")
 
 
 # Any fenced code block, generic (not just ```qwen3```), so math extraction
@@ -432,6 +458,12 @@ pre code {
   padding: 0;
 }
 
+/* The jinja snippet is long and annotated, so it gets a smaller font than
+   other code blocks (see render_jinja_block / JINJA_FENCE_RE in build.py). */
+.jinja-code {
+  font-size: 8pt;
+}
+
 blockquote {
   margin: 1rem 0;
   padding: 4px 1rem;
@@ -522,6 +554,7 @@ def main() -> None:
     body = re.sub(r"^#[ \t]+.*\n+", "", body, count=1)
 
     body, qwen3_blocks = extract_qwen3_blocks(body)
+    body, jinja_blocks = extract_jinja_blocks(body)
     body, math_blocks = extract_math_blocks(body)
 
     body_html = markdown.markdown(
@@ -544,6 +577,10 @@ def main() -> None:
         for i, raw in enumerate(qwen3_blocks):
             rendered = render_qwen3_block(raw, tokenizer)
             body_html = body_html.replace(f"<!--QWEN3_BLOCK_{i}-->", rendered)
+
+    for i, raw in enumerate(jinja_blocks):
+        rendered = render_jinja_block(raw)
+        body_html = body_html.replace(f"<!--JINJA_BLOCK_{i}-->", rendered)
 
     for i, (tex, is_display) in enumerate(math_blocks):
         tex = html.escape(tex)

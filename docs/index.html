@@ -58,40 +58,77 @@ result? What do language models have to do with any of this? What is happening?<
 <li><em>recognizing</em> tool calls in the tokens;</li>
 <li><em>calling</em> those tools;</li>
 <li><em>returning</em> the result of the tool call as more tokens; and</li>
-<li>repeating from step 3 until we generate a special <em>end</em> token.</li>
+<li>repeating from step 3 until we reach a stopping condition.</li>
 </ol>
 <p>Some of these steps are language model specific. To make things as concrete as
 possible, we will walk through the toy example using Qwen3.</p>
 <section class="fold"><h3><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;</span>1. Template</h3>
 <p>The first thing we need to do is convert our agentic program into a textual
 prompt. This is usually done with what is called a <em>chat template</em>. The code
-below is one example of such a template: it is snippet of a <a href="(https://github.com/QwenLM/Qwen3/blob/7a2f61ffc7a20d47efcd2bf97f6f2bf52729042e/docs/source/assets/qwen3_nonthinking.jinja)">Jinja file
-provided by the authors of
-Qwen3</a>.
+below is one example of such a template: it is a simplified snippet—with
+added comments—of the <a href="https://huggingface.co/Qwen/Qwen3-Coder-30B-A3B-Instruct/blob/main/chat_template.jinja">chat template for
+Qwen3-Coder-30B-A3B-Instruct</a>.
 You can think of this as a program that takes in tool defintions (like <code>fib</code>)
 and messages (like "What is the thirty-third Fibonacci number?") and generates
 text in the format that the language model expects to work on.</p>
-<div class="codehilite"><pre><span></span><code><span class="cp">{%</span>- <span class="k">if</span> <span class="nv">tools</span> <span class="cp">%}</span>
-<span class="x">    </span><span class="cp">{{</span><span class="o">-</span> <span class="s1">'&lt;|im_start|&gt;system\n'</span> <span class="cp">}}</span>
-<span class="x">    </span><span class="cp">{%</span>- <span class="k">if</span> <span class="nv">messages</span><span class="o">[</span><span class="m">0</span><span class="o">]</span><span class="nv">.role</span> <span class="o">==</span> <span class="s1">'system'</span> <span class="cp">%}</span>
-<span class="x">        </span><span class="cp">{{</span><span class="o">-</span> <span class="nv">messages</span><span class="o">[</span><span class="m">0</span><span class="o">]</span><span class="nv">.content</span> <span class="o">+</span> <span class="s1">'\n\n'</span> <span class="cp">}}</span>
-<span class="x">    </span><span class="cp">{%</span>- <span class="k">endif</span> <span class="cp">%}</span>
-<span class="x">    </span><span class="cp">{{</span><span class="o">-</span> <span class="s2">"# Tools\n\nYou may call one or more functions to assist with the user query.\n\nYou are provided with function signatures within &lt;tools&gt;&lt;/tools&gt; XML tags:\n&lt;tools&gt;"</span> <span class="cp">}}</span>
-<span class="x">    </span><span class="cp">{%</span>- <span class="k">for</span> <span class="nv">tool</span> <span class="k">in</span> <span class="nv">tools</span> <span class="cp">%}</span>
-<span class="x">        </span><span class="cp">{{</span><span class="o">-</span> <span class="s2">"\n"</span> <span class="cp">}}</span>
-<span class="x">        </span><span class="cp">{{</span><span class="o">-</span> <span class="nv">tool</span> <span class="o">|</span> <span class="nf">tojson</span> <span class="cp">}}</span>
-<span class="x">    </span><span class="cp">{%</span>- <span class="k">endfor</span> <span class="cp">%}</span>
-<span class="x">    </span><span class="cp">{{</span><span class="o">-</span> <span class="s2">"\n&lt;/tools&gt;\n\nFor each function call, return a json object with function name and arguments within &lt;tool_call&gt;&lt;/tool_call&gt; XML tags:\n&lt;tool_call&gt;\n{\"name\": &lt;function-name&gt;, \"arguments\": &lt;args-json-object&gt;}\n&lt;/tool_call&gt;&lt;|im_end|&gt;\n"</span> <span class="cp">}}</span>
+<div class="codehilite jinja-code"><pre><span></span><code><span class="c">{# Emit the system message: pass the caller's through, or synthesize a</span>
+<span class="c">   default one when tools were provided but no system message was given #}</span>
+<span class="cp">{%</span>- <span class="k">if</span> <span class="nv">system_message</span> <span class="k">is</span> <span class="nf">defined</span> <span class="cp">%}</span>
+<span class="x">    </span><span class="cp">{{</span><span class="o">-</span> <span class="s2">"&lt;|im_start|&gt;system\n"</span> <span class="o">+</span> <span class="nv">system_message</span> <span class="cp">}}</span>
 <span class="cp">{%</span>- <span class="k">else</span> <span class="cp">%}</span>
-<span class="x">...</span>
-<span class="cp">{%</span>- <span class="k">for</span> <span class="nv">message</span> <span class="k">in</span> <span class="nv">messages</span> <span class="cp">%}</span>
-<span class="x">    </span><span class="cp">{%</span>- <span class="k">if</span> <span class="nv">message.content</span> <span class="k">is</span> <span class="nf">string</span> <span class="cp">%}</span>
-<span class="x">        </span><span class="cp">{%</span>- <span class="k">set</span> <span class="nv">content</span> <span class="o">=</span> <span class="nv">message.content</span> <span class="cp">%}</span>
-<span class="x">    </span><span class="cp">{%</span>- <span class="k">else</span> <span class="cp">%}</span>
-<span class="x">        </span><span class="cp">{%</span>- <span class="k">set</span> <span class="nv">content</span> <span class="o">=</span> <span class="s1">''</span> <span class="cp">%}</span>
+<span class="x">    </span><span class="cp">{%</span>- <span class="k">if</span> <span class="nv">tools</span> <span class="k">is</span> <span class="nf">iterable</span> <span class="k">and</span> <span class="nv">tools</span> <span class="o">|</span> <span class="nf">length</span> <span class="o">&gt;</span> <span class="m">0</span> <span class="cp">%}</span>
+<span class="x">        </span><span class="cp">{{</span><span class="o">-</span> <span class="s2">"&lt;|im_start|&gt;system\nYou are Qwen, a helpful AI assistant that can interact with a computer to solve tasks."</span> <span class="cp">}}</span>
 <span class="x">    </span><span class="cp">{%</span>- <span class="k">endif</span> <span class="cp">%}</span>
-<span class="x">    </span><span class="cp">{%</span>- <span class="k">if</span> <span class="o">(</span><span class="nv">message.role</span> <span class="o">==</span> <span class="s2">"user"</span><span class="o">)</span> <span class="k">or</span> <span class="o">(</span><span class="nv">message.role</span> <span class="o">==</span> <span class="s2">"system"</span> <span class="k">and</span> <span class="k">not</span> <span class="nb">loop</span><span class="nv">.first</span><span class="o">)</span> <span class="cp">%}</span>
-<span class="x">        </span><span class="cp">{{</span><span class="o">-</span> <span class="s1">'&lt;|im_start|&gt;'</span> <span class="o">+</span> <span class="nv">message.role</span> <span class="o">+</span> <span class="s1">'\n'</span> <span class="o">+</span> <span class="nv">content</span> <span class="o">+</span> <span class="s1">'&lt;|im_end|&gt;'</span> <span class="o">+</span> <span class="s1">'\n'</span> <span class="cp">}}</span>
+<span class="cp">{%</span>- <span class="k">endif</span> <span class="cp">%}</span>
+
+<span class="c">{# List every tool as an XML &lt;function&gt; block inside &lt;tools&gt;...&lt;/tools&gt; #}</span>
+<span class="cp">{%</span>- <span class="k">if</span> <span class="nv">tools</span> <span class="k">is</span> <span class="nf">iterable</span> <span class="k">and</span> <span class="nv">tools</span> <span class="o">|</span> <span class="nf">length</span> <span class="o">&gt;</span> <span class="m">0</span> <span class="cp">%}</span>
+<span class="x">    </span><span class="cp">{{</span><span class="o">-</span> <span class="s2">"\n\n# Tools\n\nYou have access to the following functions:\n\n"</span> <span class="cp">}}</span>
+<span class="x">    </span><span class="cp">{{</span><span class="o">-</span> <span class="s2">"&lt;tools&gt;"</span> <span class="cp">}}</span>
+<span class="x">    </span><span class="cp">{%</span>- <span class="k">for</span> <span class="nv">tool</span> <span class="k">in</span> <span class="nv">tools</span> <span class="cp">%}</span>
+<span class="x">        </span><span class="cp">{%</span>- <span class="k">if</span> <span class="nv">tool.function</span> <span class="k">is</span> <span class="nf">defined</span> <span class="cp">%}</span>
+<span class="x">            </span><span class="cp">{%</span>- <span class="k">set</span> <span class="nv">tool</span> <span class="o">=</span> <span class="nv">tool.function</span> <span class="cp">%}</span>
+<span class="x">        </span><span class="cp">{%</span>- <span class="k">endif</span> <span class="cp">%}</span>
+<span class="x">        </span><span class="cp">{{</span><span class="o">-</span> <span class="s2">"\n&lt;function&gt;\n&lt;name&gt;"</span> <span class="o">~</span> <span class="nv">tool.name</span> <span class="o">~</span> <span class="s2">"&lt;/name&gt;"</span> <span class="cp">}}</span>
+<span class="x">        </span><span class="cp">{%</span>- <span class="k">if</span> <span class="nv">tool.description</span> <span class="k">is</span> <span class="nf">defined</span> <span class="cp">%}</span>
+<span class="x">            </span><span class="cp">{{</span><span class="o">-</span> <span class="s1">'\n&lt;description&gt;'</span> <span class="o">~</span> <span class="o">(</span><span class="nv">tool.description</span> <span class="o">|</span> <span class="nf">trim</span><span class="o">)</span> <span class="o">~</span> <span class="s1">'&lt;/description&gt;'</span> <span class="cp">}}</span>
+<span class="x">        </span><span class="cp">{%</span>- <span class="k">endif</span> <span class="cp">%}</span>
+<span class="x">        </span><span class="cp">{{</span><span class="o">-</span> <span class="s1">'\n&lt;parameters&gt;'</span> <span class="cp">}}</span>
+<span class="x">        ...</span>
+<span class="x">        </span><span class="cp">{{</span><span class="o">-</span> <span class="s1">'\n&lt;/parameters&gt;'</span> <span class="cp">}}</span>
+<span class="x">        </span><span class="cp">{{</span><span class="o">-</span> <span class="s1">'\n&lt;/function&gt;'</span> <span class="cp">}}</span>
+<span class="x">    </span><span class="cp">{%</span>- <span class="k">endfor</span> <span class="cp">%}</span>
+<span class="x">    </span><span class="cp">{{</span><span class="o">-</span> <span class="s2">"\n&lt;/tools&gt;"</span> <span class="cp">}}</span>
+
+<span class="x">    </span><span class="c">{# Tell the model exactly how a tool call must be formatted #}</span>
+<span class="x">    </span><span class="cp">{{</span><span class="o">-</span> <span class="s1">'\n\nIf you choose to call a function ONLY reply in the following format with NO suffix:\n\n&lt;tool_call&gt;\n&lt;function=example_function_name&gt;\n&lt;parameter=example_parameter_1&gt;\nvalue_1\n&lt;/parameter&gt;\n...\n&lt;/function&gt;\n&lt;/tool_call&gt;\n\n...'</span> <span class="cp">}}</span>
+<span class="cp">{%</span>- <span class="k">endif</span> <span class="cp">%}</span>
+<span class="x">...</span>
+
+<span class="c">{# Walk the conversation, emitting one &lt;|im_start|&gt;...&lt;|im_end|&gt; block per message #}</span>
+<span class="cp">{%</span>- <span class="k">for</span> <span class="nv">message</span> <span class="k">in</span> <span class="nv">loop_messages</span> <span class="cp">%}</span>
+<span class="x">    </span><span class="c">{# An assistant message with tool calls becomes one &lt;tool_call&gt; per call,</span>
+<span class="c">       nesting the function name and arguments as &lt;function=NAME&gt;&lt;parameter=NAME&gt; #}</span>
+<span class="x">    </span><span class="cp">{%</span>- <span class="k">if</span> <span class="nv">message.role</span> <span class="o">==</span> <span class="s2">"assistant"</span> <span class="k">and</span> <span class="nv">message.tool_calls</span> <span class="k">is</span> <span class="nf">defined</span> <span class="k">and</span> <span class="nv">message.tool_calls</span> <span class="k">is</span> <span class="nf">iterable</span> <span class="k">and</span> <span class="nv">message.tool_calls</span> <span class="o">|</span> <span class="nf">length</span> <span class="o">&gt;</span> <span class="m">0</span> <span class="cp">%}</span>
+<span class="x">        </span><span class="cp">{{</span><span class="o">-</span> <span class="s1">'&lt;|im_start|&gt;'</span> <span class="o">+</span> <span class="nv">message.role</span> <span class="cp">}}</span>
+<span class="x">        ...</span>
+<span class="x">        </span><span class="cp">{%</span>- <span class="k">for</span> <span class="nv">tool_call</span> <span class="k">in</span> <span class="nv">message.tool_calls</span> <span class="cp">%}</span>
+<span class="x">            </span><span class="cp">{%</span>- <span class="k">if</span> <span class="nv">tool_call.function</span> <span class="k">is</span> <span class="nf">defined</span> <span class="cp">%}</span>
+<span class="x">                </span><span class="cp">{%</span>- <span class="k">set</span> <span class="nv">tool_call</span> <span class="o">=</span> <span class="nv">tool_call.function</span> <span class="cp">%}</span>
+<span class="x">            </span><span class="cp">{%</span>- <span class="k">endif</span> <span class="cp">%}</span>
+<span class="x">            </span><span class="cp">{{</span><span class="o">-</span> <span class="s1">'\n&lt;tool_call&gt;\n&lt;function='</span> <span class="o">+</span> <span class="nv">tool_call.name</span> <span class="o">+</span> <span class="s1">'&gt;\n'</span> <span class="cp">}}</span>
+<span class="x">            </span><span class="cp">{%</span>- <span class="k">for</span> <span class="nv">args_name</span><span class="o">,</span> <span class="nv">args_value</span> <span class="k">in</span> <span class="nv">tool_call.arguments</span><span class="o">|</span><span class="nf">items</span> <span class="cp">%}</span>
+<span class="x">                </span><span class="cp">{{</span><span class="o">-</span> <span class="s1">'&lt;parameter='</span> <span class="o">+</span> <span class="nv">args_name</span> <span class="o">+</span> <span class="s1">'&gt;\n'</span> <span class="cp">}}</span>
+<span class="x">                ...</span>
+<span class="x">                </span><span class="cp">{{</span><span class="o">-</span> <span class="s1">'\n&lt;/parameter&gt;\n'</span> <span class="cp">}}</span>
+<span class="x">            </span><span class="cp">{%</span>- <span class="k">endfor</span> <span class="cp">%}</span>
+<span class="x">            </span><span class="cp">{{</span><span class="o">-</span> <span class="s1">'&lt;/function&gt;\n&lt;/tool_call&gt;'</span> <span class="cp">}}</span>
+<span class="x">        </span><span class="cp">{%</span>- <span class="k">endfor</span> <span class="cp">%}</span>
+<span class="x">        </span><span class="cp">{{</span><span class="o">-</span> <span class="s1">'&lt;|im_end|&gt;\n'</span> <span class="cp">}}</span>
+
+<span class="x">    </span><span class="c">{# Otherwise, pass the message through as-is #}</span>
+<span class="x">    </span><span class="cp">{%</span>- <span class="k">elif</span> <span class="nv">message.role</span> <span class="o">==</span> <span class="s2">"user"</span> <span class="k">or</span> <span class="nv">message.role</span> <span class="o">==</span> <span class="s2">"system"</span> <span class="k">or</span> <span class="nv">message.role</span> <span class="o">==</span> <span class="s2">"assistant"</span> <span class="cp">%}</span>
+<span class="x">        </span><span class="cp">{{</span><span class="o">-</span> <span class="s1">'&lt;|im_start|&gt;'</span> <span class="o">+</span> <span class="nv">message.role</span> <span class="o">+</span> <span class="s1">'\n'</span> <span class="o">+</span> <span class="nv">message.content</span> <span class="o">+</span> <span class="s1">'&lt;|im_end|&gt;'</span> <span class="o">+</span> <span class="s1">'\n'</span> <span class="cp">}}</span>
 <span class="x">    ...</span>
 <span class="cp">{%</span>- <span class="k">endfor</span> <span class="cp">%}</span>
 <span class="x">...</span>
@@ -99,30 +136,48 @@ text in the format that the language model expects to work on.</p>
 <p>Specifically, for our example, that Jinja code will generate the following text
 prompt.</p>
 <pre class="codehilite qwen3-tokens"><code><span class="tk tk-im">&lt;|im_start|&gt;</span><span class="tk">system</span><span class="tk">
+</span><span class="tk">You</span><span class="tk"> are</span><span class="tk"> Q</span><span class="tk">wen</span><span class="tk">,</span><span class="tk"> a</span><span class="tk"> helpful</span><span class="tk"> AI</span><span class="tk"> assistant</span><span class="tk"> that</span><span class="tk"> can</span><span class="tk"> interact</span><span class="tk"> with</span><span class="tk"> a</span><span class="tk"> computer</span><span class="tk"> to</span><span class="tk"> solve</span><span class="tk"> tasks</span><span class="tk">.
+
 </span><span class="tk">#</span><span class="tk"> Tools</span><span class="tk">
 
-</span><span class="tk">You</span><span class="tk"> may</span><span class="tk"> call</span><span class="tk"> one</span><span class="tk"> or</span><span class="tk"> more</span><span class="tk"> functions</span><span class="tk"> to</span><span class="tk"> assist</span><span class="tk"> with</span><span class="tk"> the</span><span class="tk"> user</span><span class="tk"> query</span><span class="tk">.
+</span><span class="tk">You</span><span class="tk"> have</span><span class="tk"> access</span><span class="tk"> to</span><span class="tk"> the</span><span class="tk"> following</span><span class="tk"> functions</span><span class="tk">:
 
-</span><span class="tk">You</span><span class="tk"> are</span><span class="tk"> provided</span><span class="tk"> with</span><span class="tk"> function</span><span class="tk"> signatures</span><span class="tk"> within</span><span class="tk"> &lt;</span><span class="tk">tools</span><span class="tk">&gt;&lt;/</span><span class="tk">tools</span><span class="tk">&gt;</span><span class="tk"> XML</span><span class="tk"> tags</span><span class="tk">:
 </span><span class="tk">&lt;</span><span class="tk">tools</span><span class="tk">&gt;
-</span><span class="tk">{
-</span><span class="tk"> </span><span class="tk"> "</span><span class="tk">type</span><span class="tk">"</span><span class="tk">   </span><span class="tk"> :</span><span class="tk"> "</span><span class="tk">function</span><span class="tk">",</span><span class="tk"> 
-</span><span class="tk"> </span><span class="tk"> "</span><span class="tk">function</span><span class="tk">":</span><span class="tk"> {
-</span><span class="tk">   </span><span class="tk"> "</span><span class="tk">name</span><span class="tk">"</span><span class="tk">      </span><span class="tk"> :</span><span class="tk"> "</span><span class="tk">fib</span><span class="tk">",</span><span class="tk"> 
-</span><span class="tk">   </span><span class="tk"> "</span><span class="tk">description</span><span class="tk">":</span><span class="tk"> "</span><span class="tk">Return</span><span class="tk"> the</span><span class="tk"> nth</span><span class="tk"> Fibonacci</span><span class="tk"> number</span><span class="tk">",</span><span class="tk"> 
-</span><span class="tk">   </span><span class="tk"> "</span><span class="tk">parameters</span><span class="tk">"</span><span class="tk"> :</span><span class="tk"> {
-</span><span class="tk">     </span><span class="tk"> "</span><span class="tk">type</span><span class="tk">"</span><span class="tk">     </span><span class="tk"> :</span><span class="tk"> "</span><span class="tk">object</span><span class="tk">",
-</span><span class="tk">     </span><span class="tk"> "</span><span class="tk">properties</span><span class="tk">":</span><span class="tk"> {"</span><span class="tk">n</span><span class="tk">":</span><span class="tk"> {"</span><span class="tk">type</span><span class="tk">":</span><span class="tk"> "</span><span class="tk">integer</span><span class="tk">"}</span><span class="tk">},</span><span class="tk"> 
-</span><span class="tk">     </span><span class="tk"> "</span><span class="tk">required</span><span class="tk">"</span><span class="tk"> </span><span class="tk"> :</span><span class="tk"> ["</span><span class="tk">n</span><span class="tk">"]
-</span><span class="tk">   </span><span class="tk"> }
-</span><span class="tk"> </span><span class="tk"> }
-</span><span class="tk">}
+</span><span class="tk">&lt;</span><span class="tk">function</span><span class="tk">&gt;
+</span><span class="tk">&lt;</span><span class="tk">name</span><span class="tk">&gt;</span><span class="tk">fib</span><span class="tk">&lt;/</span><span class="tk">name</span><span class="tk">&gt;
+</span><span class="tk">&lt;</span><span class="tk">description</span><span class="tk">&gt;</span><span class="tk">Return</span><span class="tk"> the</span><span class="tk"> nth</span><span class="tk"> Fibonacci</span><span class="tk"> number</span><span class="tk">&lt;/</span><span class="tk">description</span><span class="tk">&gt;
+</span><span class="tk">&lt;</span><span class="tk">parameters</span><span class="tk">&gt;
+</span><span class="tk">&lt;</span><span class="tk">parameter</span><span class="tk">&gt;
+</span><span class="tk">&lt;</span><span class="tk">name</span><span class="tk">&gt;n</span><span class="tk">&lt;/</span><span class="tk">name</span><span class="tk">&gt;
+</span><span class="tk">&lt;</span><span class="tk">type</span><span class="tk">&gt;</span><span class="tk">integer</span><span class="tk">&lt;/</span><span class="tk">type</span><span class="tk">&gt;
+</span><span class="tk">&lt;/</span><span class="tk">parameter</span><span class="tk">&gt;
+</span><span class="tk">&lt;</span><span class="tk">required</span><span class="tk">&gt;</span><span class="tk">["</span><span class="tk">n</span><span class="tk">"]</span><span class="tk">&lt;/</span><span class="tk">required</span><span class="tk">&gt;
+</span><span class="tk">&lt;/</span><span class="tk">parameters</span><span class="tk">&gt;
+</span><span class="tk">&lt;/</span><span class="tk">function</span><span class="tk">&gt;
 </span><span class="tk">&lt;/</span><span class="tk">tools</span><span class="tk">&gt;
 
-</span><span class="tk">For</span><span class="tk"> each</span><span class="tk"> function</span><span class="tk"> call</span><span class="tk">,</span><span class="tk"> return</span><span class="tk"> a</span><span class="tk"> json</span><span class="tk"> object</span><span class="tk"> with</span><span class="tk"> function</span><span class="tk"> name</span><span class="tk"> and</span><span class="tk"> arguments</span><span class="tk"> within</span><span class="tk"> </span><span class="tk tk-tool">&lt;tool_call&gt;</span><span class="tk tk-tool">&lt;/tool_call&gt;</span><span class="tk"> XML</span><span class="tk"> tags</span><span class="tk">:
+</span><span class="tk">If</span><span class="tk"> you</span><span class="tk"> choose</span><span class="tk"> to</span><span class="tk"> call</span><span class="tk"> a</span><span class="tk"> function</span><span class="tk"> ONLY</span><span class="tk"> reply</span><span class="tk"> in</span><span class="tk"> the</span><span class="tk"> following</span><span class="tk"> format</span><span class="tk"> with</span><span class="tk"> NO</span><span class="tk"> suffix</span><span class="tk">:
+
 </span><span class="tk tk-tool">&lt;tool_call&gt;</span><span class="tk">
-</span><span class="tk">{"</span><span class="tk">name</span><span class="tk">":</span><span class="tk"> &lt;</span><span class="tk">function</span><span class="tk">-name</span><span class="tk">&gt;,</span><span class="tk"> "</span><span class="tk">arguments</span><span class="tk">":</span><span class="tk"> &lt;</span><span class="tk">args</span><span class="tk">-json</span><span class="tk">-object</span><span class="tk">&gt;}
+</span><span class="tk">&lt;</span><span class="tk">function</span><span class="tk">=</span><span class="tk">example</span><span class="tk">_function</span><span class="tk">_name</span><span class="tk">&gt;
+</span><span class="tk">&lt;</span><span class="tk">parameter</span><span class="tk">=</span><span class="tk">example</span><span class="tk">_parameter</span><span class="tk">_</span><span class="tk">1</span><span class="tk">&gt;
+</span><span class="tk">value</span><span class="tk">_</span><span class="tk">1</span><span class="tk">
+</span><span class="tk">&lt;/</span><span class="tk">parameter</span><span class="tk">&gt;
+</span><span class="tk">&lt;</span><span class="tk">parameter</span><span class="tk">=</span><span class="tk">example</span><span class="tk">_parameter</span><span class="tk">_</span><span class="tk">2</span><span class="tk">&gt;
+</span><span class="tk">This</span><span class="tk"> is</span><span class="tk"> the</span><span class="tk"> value</span><span class="tk"> for</span><span class="tk"> the</span><span class="tk"> second</span><span class="tk"> parameter</span><span class="tk">
+</span><span class="tk">that</span><span class="tk"> can</span><span class="tk"> span</span><span class="tk">
+</span><span class="tk">multiple</span><span class="tk"> lines</span><span class="tk">
+</span><span class="tk">&lt;/</span><span class="tk">parameter</span><span class="tk">&gt;
+</span><span class="tk">&lt;/</span><span class="tk">function</span><span class="tk">&gt;
 </span><span class="tk tk-tool">&lt;/tool_call&gt;</span><span class="tk">
+
+</span><span class="tk">&lt;</span><span class="tk">IMPORTANT</span><span class="tk">&gt;
+</span><span class="tk">Reminder</span><span class="tk">:
+</span><span class="tk">-</span><span class="tk"> Function</span><span class="tk"> calls</span><span class="tk"> MUST</span><span class="tk"> follow</span><span class="tk"> the</span><span class="tk"> specified</span><span class="tk"> format</span><span class="tk">:</span><span class="tk"> an</span><span class="tk"> inner</span><span class="tk"> &lt;</span><span class="tk">function</span><span class="tk">=</span><span class="tk">...</span><span class="tk">&gt;&lt;/</span><span class="tk">function</span><span class="tk">&gt;</span><span class="tk"> block</span><span class="tk"> must</span><span class="tk"> be</span><span class="tk"> nested</span><span class="tk"> within</span><span class="tk"> </span><span class="tk tk-tool">&lt;tool_call&gt;</span><span class="tk tk-tool">&lt;/tool_call&gt;</span><span class="tk"> XML</span><span class="tk"> tags</span><span class="tk">
+</span><span class="tk">-</span><span class="tk"> Required</span><span class="tk"> parameters</span><span class="tk"> MUST</span><span class="tk"> be</span><span class="tk"> specified</span><span class="tk">
+</span><span class="tk">-</span><span class="tk"> You</span><span class="tk"> may</span><span class="tk"> provide</span><span class="tk"> optional</span><span class="tk"> reasoning</span><span class="tk"> for</span><span class="tk"> your</span><span class="tk"> function</span><span class="tk"> call</span><span class="tk"> in</span><span class="tk"> natural</span><span class="tk"> language</span><span class="tk"> BEFORE</span><span class="tk"> the</span><span class="tk"> function</span><span class="tk"> call</span><span class="tk">,</span><span class="tk"> but</span><span class="tk"> NOT</span><span class="tk"> after</span><span class="tk">
+</span><span class="tk">-</span><span class="tk"> If</span><span class="tk"> there</span><span class="tk"> is</span><span class="tk"> no</span><span class="tk"> function</span><span class="tk"> call</span><span class="tk"> available</span><span class="tk">,</span><span class="tk"> answer</span><span class="tk"> the</span><span class="tk"> question</span><span class="tk"> like</span><span class="tk"> normal</span><span class="tk"> with</span><span class="tk"> your</span><span class="tk"> current</span><span class="tk"> knowledge</span><span class="tk"> and</span><span class="tk"> do</span><span class="tk"> not</span><span class="tk"> tell</span><span class="tk"> the</span><span class="tk"> user</span><span class="tk"> about</span><span class="tk"> function</span><span class="tk"> calls</span><span class="tk">
+</span><span class="tk">&lt;/</span><span class="tk">IMPORTANT</span><span class="tk">&gt;
 </span><span class="tk tk-im">&lt;|im_end|&gt;</span><span class="tk">
 
 </span><span class="tk tk-im">&lt;|im_start|&gt;</span><span class="tk">user</span><span class="tk">
@@ -132,8 +187,9 @@ prompt.</p>
 mark individual "input messages" and they are tagged with a role ("system" and
 "user", in this case). Second, the "system" role gives the <code>fib</code> function
 signature and docstring, without the code body, along with instructions on how
-to call functions, generally (generate a json object following a specific
-schema wrapped in specific XML tags).</p>
+to call functions, generally (wrap the call in <code>&lt;tool_call&gt;</code> and
+<code>&lt;function=example_function_name&gt;</code> tags, with the argument in its own
+<code>&lt;parameter=example_parameter_1&gt;</code> tag).</p>
 </section><section class="fold"><h3><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;</span>2. Tokens</h3>
 <p>Language models do not operate on text, though. They operate on tokens. And
 generating tokens is slightly more involved than you might expect. </p>
@@ -164,9 +220,11 @@ the target language model will understand.</p>
 <div class="codehilite"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">transformers</span><span class="w"> </span><span class="kn">import</span> <span class="n">AutoTokenizer</span>
 
 <span class="n">jinja_generated_prompt</span> <span class="o">=</span> <span class="s2">"""&lt;|im_start|&gt;system</span>
+<span class="s2">You are Qwen, a helpful AI assistant that can interact with a computer to solve tasks.</span>
+
 <span class="s2"># Tools</span>
 
-<span class="s2">You may call one or more functions to assist with the user query.</span>
+<span class="s2">You have access to the following functions:</span>
 
 <span class="s2">...</span>
 
@@ -195,15 +253,20 @@ the following.</p>
 </span><span class="tk">The</span><span class="tk"> user</span><span class="tk"> wants</span><span class="tk"> the</span><span class="tk"> </span><span class="tk">3</span><span class="tk">3</span><span class="tk">rd</span><span class="tk"> Fibonacci</span><span class="tk"> number</span><span class="tk">.</span><span class="tk"> Rather</span><span class="tk"> than</span><span class="tk"> compute</span><span class="tk"> it</span><span class="tk"> by</span><span class="tk"> hand</span><span class="tk">,</span><span class="tk"> I</span><span class="tk">'ll</span><span class="tk"> call</span><span class="tk"> the</span><span class="tk"> fib</span><span class="tk"> function</span><span class="tk"> with</span><span class="tk"> n</span><span class="tk">=</span><span class="tk">3</span><span class="tk">3</span><span class="tk">.
 </span><span class="tk tk-think">&lt;/think&gt;</span><span class="tk">
 </span><span class="tk tk-tool">&lt;tool_call&gt;</span><span class="tk">
-</span><span class="tk">{"</span><span class="tk">name</span><span class="tk">":</span><span class="tk"> "</span><span class="tk">fib</span><span class="tk">",</span><span class="tk"> "</span><span class="tk">arguments</span><span class="tk">":</span><span class="tk"> {"</span><span class="tk">n</span><span class="tk">":</span><span class="tk"> </span><span class="tk">3</span><span class="tk">3</span><span class="tk">}}
+</span><span class="tk">&lt;</span><span class="tk">function</span><span class="tk">=f</span><span class="tk">ib</span><span class="tk">&gt;
+</span><span class="tk">&lt;</span><span class="tk">parameter</span><span class="tk">=n</span><span class="tk">&gt;
+</span><span class="tk">3</span><span class="tk">3</span><span class="tk">
+</span><span class="tk">&lt;/</span><span class="tk">parameter</span><span class="tk">&gt;
+</span><span class="tk">&lt;/</span><span class="tk">function</span><span class="tk">&gt;
 </span><span class="tk tk-tool">&lt;/tool_call&gt;</span><span class="tk">
 </span><span class="tk tk-im">&lt;|im_end|&gt;</span></code></pre>
 <p>There are three very important things happening in this text block. First, the
 text begins with <code>&lt;|im_start|&gt;assistant</code> and ends with a matching <code>&lt;|im_end|&gt;</code>.
 Second, there is an XML block starting with <code>&lt;think&gt;</code> and ending with a
 matching <code>&lt;/think&gt;</code>. Third, there is an XML block starting with <code>&lt;tool_call&gt;</code>,
-ending with a matching <code>&lt;tool_call&gt;</code>, and containing a json object
-corresponding to a tool call, as defined in the prompt preamble from before.</p>
+ending with a matching <code>&lt;/tool_call&gt;</code>, and containing a nested
+<code>&lt;function=fib&gt;</code> block whose <code>&lt;parameter=n&gt;</code> tag carries the argument, as
+defined in the prompt preamble from before.</p>
 <p><a href="https://rlhfbook.com/">Nathan Lambert's Textbook</a> describes how language
 models are trained to follow these formats. But none of this is guaranteed by
 and it is common for engineers to include code that will automatically repair
@@ -222,7 +285,9 @@ of the model. This leaves the tool call block.</p>
 parsers for every language model that they support. For example, here is the
 <a href="https://github.com/vllm-project/vllm/blob/main/vllm/parser/qwen3.py">parser for
 Qwen3</a>,
-which transorms the output of the generation step into a json object.</p>
+which transorms the output of the generation step into a JSON object. This is
+what we mean by "recognize" the tool calls: find them and package them up for
+the next step.</p>
 <p>If the language model uses slightly different format, the parser can fail and
 you can run into trouble. For example, today, Claude gave me output like this
 <code>(cite index="9-1"&gt;...&lt;/cite&gt;</code> which probably should have rendered as a
