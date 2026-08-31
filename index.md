@@ -68,7 +68,7 @@ prompt. This is usually done with what is called a _chat template_. The code
 below is one example of such a template: it is a simplified snippet---with
 added comments---of the [chat template for
 Qwen3-Coder-30B-A3B-Instruct](https://huggingface.co/Qwen/Qwen3-Coder-30B-A3B-Instruct/blob/main/chat_template.jinja).
-You can think of this as a program that takes in tool defintions (like `fib`)
+You can think of this as a program that takes in tool definitions (like `fib`)
 and messages (like "What is the thirty-third Fibonacci number?") and generates
 text in the format that the language model expects to work on.
 
@@ -204,14 +204,14 @@ to call functions, generally (wrap the call in `<tool_call>` and
 Language models do not operate on text, though. They operate on tokens. And
 generating tokens is slightly more involved than you might expect.
 
-At a high level, you can think of tokens as the langauge model's atomic units
+At a high level, you can think of tokens as the language model's atomic units
 of generation. These include special tokens, like `<|im_start|>`. In formal
 language theory, we would call the set of tokens the alphabet of the language
 (usually denoted $\Sigma$). If we want to generate English text, we need to be
 able to translate between the language model's language and English in both
 directions.
 
-Suppose that `th`, `eme`, and `theme`, are all valid tokens for a given
+Suppose that `th`, `eme`, and `theme` are all valid tokens for a given
 language model. The token `th` could be useful for generating text like "4th",
 "5th", etc; "eme" is a common suffix that could be useful for words like
 "phoneme", "acteme", etc; and "theme" might just be a common enough word to
@@ -228,7 +228,7 @@ pre-training. Using it at inference time would totally throw off the language
 model and likely lead to suboptimal results.
 
 To avoid these issues, language model providers define their tokenizers,
-usually in a config file. Libraries like Hugging Faces's tokenizer library, can
+usually in a config file. Libraries like Hugging Face's tokenizer library can
 load these configs and quickly encode your text into a sequence of tokens that
 the target language model will understand.
 
@@ -297,7 +297,7 @@ models are trained to follow these formats. But none of this is guaranteed by
 and it is common for engineers to include code that will automatically repair
 sequences that do not adhere to the required format. For example,
 [here](https://huggingface.co/froggeric/Qwen3.5-35B-A3B-Uncensored-FernflowerAI-MLX-8bit/blob/main/chat_template.jinja#L116)
-is a jinja template that processes assitant messages to make sure that
+is a jinja template that processes assistant messages to make sure that
 `<think>` blocks are closed with `</think>` before tool call blocks.
 
 ### 4. Recognize
@@ -309,7 +309,7 @@ be handled differently than top-level tokens. Inference engines, like
 [vLLM](https://github.com/vllm-project/vllm), include parsers for every
 language model that they support. For example, here is the [parser for
 Qwen3](https://github.com/vllm-project/vllm/blob/main/vllm/parser/qwen3.py),
-which transorms the output of the generation step into a JSON object. This is
+which transforms the output of the generation step into a JSON object. This is
 what we mean by "recognize" the tool calls, thinking steps, and responses: find
 them and package them up for the next step.
 
@@ -346,7 +346,7 @@ calls](https://github.com/vllm-project/vllm/issues/39056).
 ### 5. Call
 
 Once we have the response in JSON format, we can process it and actually make
-the tool calls that the langauge model requested. The langauge model cannot do
+the tool calls that the language model requested. The language model cannot do
 anything directly. The agent harness, the inference runtime, and the serving
 engine are its arms, feet, and heart. The following code shows how we could
 implement the tool calls themselves in an agentic harness, assuming the parsing
@@ -368,7 +368,7 @@ for tool_call in response["tool_calls"]:
 For Qwen3, "tool results are treated as special user messages." Models like GLM
 use an actual `<|observation|>` role for this instead. Either way, the chat
 template handles the encoding so that we don't have to worry about the details.
-For Qwen3, the result of our tool call can be sent back to the langauge model
+For Qwen3, the result of our tool call can be sent back to the language model
 as the following text (appropriately tokenized by the tokenizer, as before).
 
 ```qwen3
@@ -384,7 +384,7 @@ language model.
 
 ### 7. End
 
-Eventually, we will generate a sequence of tokens that has no tool calls. Like
+Eventually, we will generate a sequence of tokens that has no tool calls, like
 the following.
 
 ```qwen3
@@ -440,7 +440,7 @@ the same issue. An agent that reads from a database might bite off more than it
 can chew (or that you can afford for it to chew). An agent that uses an
 automated theorem prover might not be able to digest the proof it gets back.
 
-We could ask the langauge model politely to not call `fib` with too large of an
+We could ask the language model politely to not call `fib` with too large of an
 argument. That would probably work most of the time.
 
 We could design the `fib` function so that it rejects large values of `n`.
@@ -456,7 +456,7 @@ def fib(n: int) -> int:
 ```
 
 We could also instrument the harness or inference engine to avoid such cases,
-generally. For example, we code add a code hook that intercepts all messages to
+generally. For example, we could add a code hook that intercepts all messages to
 the language model and, if they are too big, redirects them to a file or just
 outright replaces them with a warning message.
 
@@ -479,7 +479,7 @@ on Sep 29 in the [FMxAI course](https://federico.morarocha.ca/CS846-FMxAI/).
 Imagine that we ask for two `fib` tool calls, we execute them in parallel, and
 the results come back out of order. Will we give the user the right response?
 Or what if these tools have side-effects and interfere with each other? Tool
-calling can lead to many concurency bugs which agent harnesses and SDKs must
+calling can lead to many concurrency bugs which agent harnesses and SDKs must
 deal with, but very few do.
 
 ### Hacking the Harness (From Within)
@@ -488,12 +488,12 @@ The famous [METR
 report](https://metr.org/blog/2026-08-26-openai-hugging-face-incident-investigation/)
 disclosed that, during OpenAI's Hugging Face incident, "Agents successfully
 prototyped techniques to 'spoof' tool calls by substituting a different command
-for the command they appeared to run." Can a malicious langauge model spoof
-tool calls in our setup? Or worse, can an langauge model generate a sequence of
+for the command they appeared to run." Can a malicious language model spoof
+tool calls in our setup? Or worse, can a language model generate a sequence of
 tokens that will make the harness run arbitrary code? That might sound crazy,
 but here is a [pull request in the vLLM
 project](https://github.com/vllm-project/vllm/pull/21396#discussion_r2223397938)
-that attempted to add a direct python `eval` call in the parser for tool call
+that attempted to add a direct Python `eval` call in the parser for tool call
 parameters.
 
 More sophisticated code injection attacks from within are likely possible.
