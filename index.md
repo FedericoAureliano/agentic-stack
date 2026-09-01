@@ -360,7 +360,7 @@ preamble from before.
 
 <div class="bug-banner"><span class="bug-emoji" title="known rough edge" aria-hidden="true">🐛</span></div>
 [Nathan Lambert's Textbook](https://rlhfbook.com/) describes how language
-models are trained to follow these formats. But none of this is guaranteed by
+models are trained to follow these formats. But none of this is guaranteed,
 and it is common for engineers to include code that will automatically repair
 sequences that do not adhere to the required format. For example,
 [here](https://huggingface.co/froggeric/Qwen3.5-35B-A3B-Uncensored-FernflowerAI-MLX-8bit/blob/main/chat_template.jinja#L116)
@@ -399,7 +399,7 @@ them and package them up for the next step.
 ```
 
 <div class="bug-banner"><span class="bug-emoji" title="known rough edge"
-aria-hidden="true">🐛</span></div> If the language model uses slightly
+aria-hidden="true">🐛</span></div> If the language model uses a slightly
 different format, the parser can fail and you can run into trouble. For
 example, today, Claude gave me output like this `(cite index="9-1">...</cite>`
 which probably should have rendered as a clickable citation. I suspect the
@@ -414,10 +414,10 @@ calls](https://github.com/vllm-project/vllm/issues/39056).
 
 Once we have the response in JSON format, we can process it and actually make
 the tool calls that the language model requested. The language model cannot do
-anything directly. The agent SDK, the inference runtime, and the serving engine
-are its arms, feet, and heart. The following code shows how we could implement
-the tool calls themselves in the SDK, assuming the parsing results are in a
-variable called `response`.
+anything directly. The agent SDK and the inference engine are its limbs and
+heart. The following code shows how we could implement the tool calls
+themselves in the SDK, assuming the parsing results are in a variable called
+`response`.
 
 ```python
 import json
@@ -479,7 +479,7 @@ JSON message as the final response.
 }
 ```
 
-In short, that is how we get the following behaviour that we started with.
+In short, that is how we get the following behavior that we started with.
 
 ```pycon
 >>> answer = fib_agent("What is the thirty-third Fibonacci number?")

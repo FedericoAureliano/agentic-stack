@@ -335,7 +335,7 @@ ending with a matching <code>&lt;/tool_call&gt;</code>, and containing a nested 
 block whose <code>&lt;parameter=n&gt;</code> tag carries the argument, as defined in the prompt
 preamble from before.</p>
 <div class="bug-row"><span aria-hidden="true" class="bug-emoji" title="known rough edge">🐛</span><p><a href="https://rlhfbook.com/">Nathan Lambert's Textbook</a> describes how language
-models are trained to follow these formats. But none of this is guaranteed by
+models are trained to follow these formats. But none of this is guaranteed,
 and it is common for engineers to include code that will automatically repair
 sequences that do not adhere to the required format. For example,
 <a href="https://huggingface.co/froggeric/Qwen3.5-35B-A3B-Uncensored-FernflowerAI-MLX-8bit/blob/main/chat_template.jinja#L116">here</a>
@@ -368,7 +368,7 @@ them and package them up for the next step.</p>
 <span class="w">  </span><span class="p">]</span>
 <span class="p">}</span>
 </code></pre></div>
-<div class="bug-row"><span aria-hidden="true" class="bug-emoji" title="known rough edge">🐛</span><p>If the language model uses slightly
+<div class="bug-row"><span aria-hidden="true" class="bug-emoji" title="known rough edge">🐛</span><p>If the language model uses a slightly
 different format, the parser can fail and you can run into trouble. For
 example, today, Claude gave me output like this <code>(cite index="9-1"&gt;...&lt;/cite&gt;</code>
 which probably should have rendered as a clickable citation. I suspect the
@@ -381,10 +381,10 @@ calls</a>.</p></div>
 </section><section class="fold"><h3 id="5-call"><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;</span>5. Call</h3>
 <p>Once we have the response in JSON format, we can process it and actually make
 the tool calls that the language model requested. The language model cannot do
-anything directly. The agent SDK, the inference runtime, and the serving engine
-are its arms, feet, and heart. The following code shows how we could implement
-the tool calls themselves in the SDK, assuming the parsing results are in a
-variable called <code>response</code>.</p>
+anything directly. The agent SDK and the inference engine are its limbs and
+heart. The following code shows how we could implement the tool calls
+themselves in the SDK, assuming the parsing results are in a variable called
+<code>response</code>.</p>
 <div class="codehilite"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
 
 <span class="n">results</span> <span class="o">=</span> <span class="p">{}</span>
@@ -429,7 +429,7 @@ JSON message as the final response.</p>
 <span class="w">  </span><span class="nt">"tool_calls"</span><span class="p">:</span><span class="w"> </span><span class="p">[]</span>
 <span class="p">}</span>
 </code></pre></div>
-<p>In short, that is how we get the following behaviour that we started with.</p>
+<p>In short, that is how we get the following behavior that we started with.</p>
 <div class="codehilite"><pre><span></span><code><span class="gp">&gt;&gt;&gt; </span><span class="n">answer</span> <span class="o">=</span> <span class="n">fib_agent</span><span class="p">(</span><span class="s2">"What is the thirty-third Fibonacci number?"</span><span class="p">)</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="n">answer</span><span class="p">)</span>
 <span class="go">The thirty-third Fibonacci number is 3524578</span>
