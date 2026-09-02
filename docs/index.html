@@ -62,9 +62,9 @@ result? What do language models have to do with any of this? What is happening?<
 </ol>
 <p>This is known as the agentic loop. Some of the steps are language model
 specific. To make things as concrete as possible, we will walk through the toy
-example using Qwen3. Here is that whole loop animated end-to-end, as a sequence
-diagram between the user, the SDK, the inference engine, and the LLM. The
-sections below walk through each step in detail.</p>
+example using Qwen3. The figure below shows the whole loop for our running
+example as a sequence diagram between the user, the SDK, the inference engine,
+and the LLM. The sections below walk through each step in detail.</p>
 <div class="loop-anim">
 <div class="loop-svg-wrap">
 <svg class="loop-svg" viewBox="0 0 680 660" role="img" aria-label="Sequence diagram: the user writes the agentic program (Program), the SDK hands the fib tool definition and the question to the inference engine (Template), the inference engine sends the prompt to the LLM (Tokenize), the LLM and the inference engine loop as it samples tokens from it (Generate), the LLM's output reaches the inference engine which recognizes and parses it (Recognize), the inference engine calls the SDK's fib(33) (Call), the SDK returns 3524578 to the inference engine which forwards it to the LLM (Return), and the LLM's final answer travels from the LLM to the inference engine, to the SDK, and to the user (Respond). The loop then clears and repeats from the beginning.">
@@ -339,7 +339,7 @@ models are trained to follow these formats. But none of this is guaranteed,
 and it is common for engineers to include code that will automatically repair
 sequences that do not adhere to the required format. For example,
 <a href="https://huggingface.co/froggeric/Qwen3.5-35B-A3B-Uncensored-FernflowerAI-MLX-8bit/blob/main/chat_template.jinja#L116">here</a>
-is a jinja template that processes assistant messages to make sure that
+is a Jinja template that processes assistant messages to make sure that
 <code>&lt;think&gt;</code> blocks are closed with <code>&lt;/think&gt;</code> before tool call blocks.</p></div>
 </section><section class="fold"><h3 id="4-recognize"><span aria-expanded="true" class="fold-arrow" role="button" tabindex="0">&gt;&gt;</span>4. Recognize</h3>
 <p>Once we have generated a sequence of tokens <code>&lt;|im_start|&gt;assistant ...
@@ -468,10 +468,10 @@ outright replaces them with a warning message.</p>
 <p>The one argument to our <code>fib</code> function is very simple: it is just an integer
 number. But many other tools have much more complicated types. For example, in
 <a href="https://arxiv.org/pdf/2608.05493">one of our recent papers</a>, we found that 23%
-of services expose a string parameter that must conform to a domain-specific
-language and that for one AWS domain-specific language, language models
-frequently make syntactic mistakes. We can give language models tools, but they
-might just struggle to use them correctly.</p>
+of AWS services expose a string parameter that must conform to a
+domain-specific language. For one AWS domain-specific language, we also showed
+that language models frequently make syntactic mistakes. We can give language
+models tools, but they might just struggle to use them correctly.</p>
 <p>There is a growing body of work that addresses these issues with prompting,
 constrained decoding, and other kinds of techniques. We will survey this area
 on Sep 29 in the <a href="https://federico.morarocha.ca/CS846-FMxAI/">FMxAI course</a>.</p>

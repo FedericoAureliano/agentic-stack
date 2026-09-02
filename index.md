@@ -59,9 +59,9 @@ Roughly, under-the-hood, we are
 
 This is known as the agentic loop. Some of the steps are language model
 specific. To make things as concrete as possible, we will walk through the toy
-example using Qwen3. Here is that whole loop animated end-to-end, as a sequence
-diagram between the user, the SDK, the inference engine, and the LLM. The
-sections below walk through each step in detail.
+example using Qwen3. The figure below shows the whole loop for our running
+example as a sequence diagram between the user, the SDK, the inference engine,
+and the LLM. The sections below walk through each step in detail.
 
 <div class="loop-anim">
 <div class="loop-svg-wrap">
@@ -364,7 +364,7 @@ models are trained to follow these formats. But none of this is guaranteed,
 and it is common for engineers to include code that will automatically repair
 sequences that do not adhere to the required format. For example,
 [here](https://huggingface.co/froggeric/Qwen3.5-35B-A3B-Uncensored-FernflowerAI-MLX-8bit/blob/main/chat_template.jinja#L116)
-is a jinja template that processes assistant messages to make sure that
+is a Jinja template that processes assistant messages to make sure that
 `<think>` blocks are closed with `</think>` before tool call blocks.
 
 ### 4. Recognize
@@ -532,10 +532,10 @@ outright replaces them with a warning message.
 The one argument to our `fib` function is very simple: it is just an integer
 number. But many other tools have much more complicated types. For example, in
 [one of our recent papers](https://arxiv.org/pdf/2608.05493), we found that 23%
-of services expose a string parameter that must conform to a domain-specific
-language and that for one AWS domain-specific language, language models
-frequently make syntactic mistakes. We can give language models tools, but they
-might just struggle to use them correctly.
+of AWS services expose a string parameter that must conform to a
+domain-specific language. For one AWS domain-specific language, we also showed
+that language models frequently make syntactic mistakes. We can give language
+models tools, but they might just struggle to use them correctly.
 
 There is a growing body of work that addresses these issues with prompting,
 constrained decoding, and other kinds of techniques. We will survey this area
